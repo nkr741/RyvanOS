@@ -161,10 +161,18 @@ export function bootstrapExecution(): void {
   });
 }
 
+export { executionEngine } from "./engine";
+export { agentAdapter, playbookAdapter } from "./adapters";
 export { playbookRuntime } from "./playbook";
 export { executorRegistry } from "./registry";
 export { outcomeEngine } from "./outcome";
 export { matchPlaybook, seedExecutionRules } from "./rules";
+export type {
+  ExecutionAdapter,
+  ExecutionUnit,
+  UnitResult,
+  FailurePolicy,
+} from "./engine";
 export type {
   PlaybookDefinition,
   PlaybookStage,

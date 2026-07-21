@@ -1,11 +1,16 @@
 import { prisma } from "@/lib/prisma";
-import { AgentContext, type MissionContext } from "../runtime/context";
 import { eventBus } from "../runtime/event";
 import { agentRegistry } from "../runtime/registry";
-import { approvalGateway } from "./approval";
+import { executionEngine } from "../execution/engine";
+import { agentAdapter } from "../execution/adapters";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("orchestrator");
+
+const ORCHESTRATOR_OPTIONS = {
+  failurePolicy: "fail-fast" as const,
+  source: "orchestrator",
+};
 
 // ─── Mission Plan ───────────────────────────────────────────────
 
@@ -305,303 +310,19 @@ class OrchestratorImpl {
   }
 
   async executeMission(missionId: string): Promise<void> {
-    const startTime = Date.now();
-
-    const mission = await prisma.mission.update({
-      where: { id: missionId },
-      data: { status: "executing" },
-      include: { steps: { orderBy: { sequence: "asc" } } },
-    });
-
-    log.info({ missionId, type: mission.type }, "mission started");
-
-    await eventBus.publish({
-      type: "mission.started.v1",
-      version: "1",
-      payload: { missionId },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
-
-    const config = JSON.parse(mission.config) as Record<string, unknown>;
-    let lastOutput: Record<string, unknown> = {};
-    let completedSteps = 0;
-
-    for (const step of mission.steps) {
-      if (step.status === "completed" || step.status === "skipped") {
-        completedSteps++;
-        if (step.output) {
-          try {
-            lastOutput = JSON.parse(step.output) as Record<string, unknown>;
-          } catch {
-            log.debug({ stepId: step.id, missionId }, "could not parse step output as JSON");
-          }
-        }
-        continue;
-      }
-
-      const stepInput = {
-        ...(JSON.parse(step.input) as Record<string, unknown>),
-        previousOutput: lastOutput,
-        missionConfig: config,
-      };
-
-      // Check approval
-      if (step.approvalRequired) {
-        const approval = await approvalGateway.requestApproval({
-          missionId,
-          stepId: step.id,
-          action: `${step.agentId}.execute`,
-          agentId: step.agentId,
-          description: step.title,
-          payload: stepInput,
-        });
-
-        if (!approval.approved && !approval.autoApproved) {
-          await prisma.missionStep.update({
-            where: { id: step.id },
-            data: { status: "awaiting_approval" },
-          });
-          await prisma.mission.update({
-            where: { id: missionId },
-            data: {
-              status: "awaiting_approval",
-              progress: Math.round((completedSteps / mission.steps.length) * 100),
-            },
-          });
-
-          log.info({ missionId, stepId: step.id }, "mission paused for approval");
-
-          await eventBus.publish({
-            type: "mission.paused.v1",
-            version: "1",
-            payload: { missionId, stepId: step.id, reason: "Awaiting approval" },
-            source: "orchestrator",
-            missionId,
-            correlationId: missionId,
-          });
-          return;
-        }
-      }
-
-      // Execute step
-      await prisma.missionStep.update({
-        where: { id: step.id },
-        data: { status: "running", startedAt: new Date() },
-      });
-
-      const agent = agentRegistry.get(step.agentId);
-      if (!agent) {
-        await this.failStep(step.id, missionId, `Agent '${step.agentId}' not found`);
-        await this.failMission(
-          missionId,
-          `Agent '${step.agentId}' not found at step ${step.sequence}`,
-          startTime,
-        );
-        return;
-      }
-
-      const missionCtx: MissionContext = {
-        missionId,
-        missionType: mission.type,
-        correlationId: missionId,
-        stepId: step.id,
-        stepSequence: step.sequence,
-        merchantId: config.merchantId as string | undefined,
-      };
-
-      const ctx = new AgentContext(step.agentId, missionCtx);
-
-      log.info(
-        { missionId, stepId: step.id, agentId: step.agentId, sequence: step.sequence },
-        "executing step",
-      );
-
-      const result = await agent.run(ctx, stepInput);
-
-      if (!result.success) {
-        await this.failStep(
-          step.id,
-          missionId,
-          (result.data?.error as string) || "Agent execution failed",
-        );
-        await this.failMission(
-          missionId,
-          `Step ${step.sequence} (${step.title}) failed`,
-          startTime,
-        );
-        return;
-      }
-
-      await prisma.missionStep.update({
-        where: { id: step.id },
-        data: {
-          status: "completed",
-          output: JSON.stringify(result.data),
-          reasoning: result.reasoning,
-          completedAt: new Date(),
-        },
-      });
-
-      lastOutput = result.data;
-      completedSteps++;
-
-      await prisma.mission.update({
-        where: { id: missionId },
-        data: { progress: Math.round((completedSteps / mission.steps.length) * 100) },
-      });
-
-      await eventBus.publish({
-        type: "mission.step_completed.v1",
-        version: "1",
-        payload: {
-          missionId,
-          stepId: step.id,
-          agentId: step.agentId,
-          sequence: step.sequence,
-          progress: Math.round((completedSteps / mission.steps.length) * 100),
-        },
-        source: "orchestrator",
-        missionId,
-        correlationId: missionId,
-      });
-    }
-
-    const allOutputs = mission.steps.map((s) => {
-      if (s.output) {
-        try {
-          return JSON.parse(s.output);
-        } catch {
-          log.debug({ stepId: s.id, missionId }, "could not parse step output as JSON");
-          return null;
-        }
-      }
-      return null;
-    });
-
-    const durationMs = Date.now() - startTime;
-
-    // Aggregate LLM cost for this mission
-    const costAgg = await prisma.llmUsageLog.aggregate({
-      where: { correlationId: missionId },
-      _sum: { estimatedCost: true, inputTokens: true, outputTokens: true },
-    });
-
-    await prisma.mission.update({
-      where: { id: missionId },
-      data: {
-        status: "completed",
-        progress: 100,
-        result: JSON.stringify({ steps: allOutputs, finalOutput: lastOutput }),
-        completedAt: new Date(),
-        durationMs,
-        totalCostUsd: costAgg._sum.estimatedCost || null,
-        inputTokens: costAgg._sum.inputTokens || null,
-        outputTokens: costAgg._sum.outputTokens || null,
-      },
-    });
-
-    log.info(
-      {
-        missionId,
-        durationMs,
-        totalCostUsd: costAgg._sum.estimatedCost,
-        inputTokens: costAgg._sum.inputTokens,
-        outputTokens: costAgg._sum.outputTokens,
-      },
-      "mission completed",
-    );
-
-    await eventBus.publish({
-      type: "mission.completed.v1",
-      version: "1",
-      payload: {
-        missionId,
-        title: mission.title,
-        durationMs,
-        totalCostUsd: costAgg._sum.estimatedCost,
-        inputTokens: costAgg._sum.inputTokens,
-        outputTokens: costAgg._sum.outputTokens,
-      },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
+    await executionEngine.run(missionId, agentAdapter, ORCHESTRATOR_OPTIONS);
   }
 
   async resumeMission(missionId: string): Promise<void> {
-    const mission = await prisma.mission.findUnique({
-      where: { id: missionId },
-      include: { steps: { orderBy: { sequence: "asc" } } },
-    });
-
-    if (!mission || mission.status !== "awaiting_approval") {
-      throw new Error("Mission not found or not awaiting approval");
-    }
-
-    log.info({ missionId }, "mission resumed");
-    await this.executeMission(missionId);
+    await executionEngine.resume(missionId, agentAdapter, ORCHESTRATOR_OPTIONS);
   }
 
   async cancelMission(missionId: string): Promise<void> {
-    await prisma.mission.update({
-      where: { id: missionId },
-      data: { status: "cancelled", completedAt: new Date() },
-    });
-
-    await prisma.missionStep.updateMany({
-      where: { missionId, status: { in: ["pending", "running", "awaiting_approval"] } },
-      data: { status: "skipped" },
-    });
-
-    log.info({ missionId }, "mission cancelled");
-
-    await eventBus.publish({
-      type: "mission.cancelled.v1",
-      version: "1",
-      payload: { missionId },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
+    await executionEngine.cancel(missionId, agentAdapter, ORCHESTRATOR_OPTIONS);
   }
 
   async retryMission(missionId: string): Promise<void> {
-    const mission = await prisma.mission.findUnique({
-      where: { id: missionId },
-      include: { steps: { orderBy: { sequence: "asc" } } },
-    });
-
-    if (!mission || mission.status !== "failed") {
-      throw new Error("Mission not found or not in failed state");
-    }
-
-    const failedStep = mission.steps.find((s) => s.status === "failed");
-    if (failedStep) {
-      await prisma.missionStep.update({
-        where: { id: failedStep.id },
-        data: { status: "pending", error: null, startedAt: null, completedAt: null },
-      });
-    }
-
-    await prisma.mission.update({
-      where: { id: missionId },
-      data: { status: "executing", error: null },
-    });
-
-    log.info({ missionId, retriedStepId: failedStep?.id }, "mission retried");
-
-    await eventBus.publish({
-      type: "mission.retried.v1",
-      version: "1",
-      payload: { missionId, retriedStepId: failedStep?.id },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
-
-    await this.executeMission(missionId);
+    await executionEngine.retry(missionId, agentAdapter, ORCHESTRATOR_OPTIONS);
   }
 
   getMissionTypes(): { type: string; description: string }[] {
@@ -636,43 +357,6 @@ class OrchestratorImpl {
     ];
   }
 
-  private async failStep(stepId: string, missionId: string, error: string): Promise<void> {
-    log.error({ missionId, stepId, error }, "mission step failed");
-
-    await prisma.missionStep.update({
-      where: { id: stepId },
-      data: { status: "failed", error, completedAt: new Date() },
-    });
-
-    await eventBus.publish({
-      type: "mission.step_failed.v1",
-      version: "1",
-      payload: { missionId, stepId, error },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
-  }
-
-  private async failMission(missionId: string, error: string, startTime?: number): Promise<void> {
-    const durationMs = startTime ? Date.now() - startTime : null;
-
-    log.error({ missionId, error, durationMs }, "mission failed");
-
-    await prisma.mission.update({
-      where: { id: missionId },
-      data: { status: "failed", error, ...(durationMs ? { durationMs } : {}) },
-    });
-
-    await eventBus.publish({
-      type: "mission.failed.v1",
-      version: "1",
-      payload: { missionId, error, durationMs },
-      source: "orchestrator",
-      missionId,
-      correlationId: missionId,
-    });
-  }
 }
 
 export const orchestrator = new OrchestratorImpl();
