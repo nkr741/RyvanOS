@@ -1,0 +1,896 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("bde") // admin, bde
+  phone     String?
+  avatar    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendorSurveys    VendorSurvey[]
+  riderSurveys     RiderSurvey[]
+  followUps        FollowUp[]
+  dailyReports     DailyReport[]
+  activities       Activity[]
+  notifications    Notification[]
+  stageTransitions StageTransition[]
+  missions         Mission[]     @relation("MissionCreator")
+  approvedSteps    MissionStep[] @relation("StepApprover")
+  companiesAssigned  Company[]     @relation("CompanyAssigned")
+  companiesCreated   Company[]     @relation("CompanyCreator")
+  opportunities      Opportunity[] @relation("OpportunityCreator")
+  outreachSequences  OutreachSequence[] @relation("OutreachCreator")
+  growthActivities   GrowthActivity[] @relation("GrowthActivityUser")
+  prospectsAssigned  Prospect[]       @relation("ProspectAssigned")
+  prospectsCreated   Prospect[]       @relation("ProspectCreator")
+  locations          BdeLocation[]
+}
+
+model VendorSurvey {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bdeId     String
+  bde       User     @relation(fields: [bdeId], references: [id])
+
+  // Section 1 - Business Profile
+  businessName   String
+  ownerName      String
+  mobile         String
+  whatsapp       String?
+  email          String?
+  address        String
+  gpsLat         Float?
+  gpsLng         Float?
+  category       String // restaurant, kirana, supermarket, pharmacy, bakery, cafe, fruits_vegetables, meat_shop, pet_shop, electronics, stationery, flower_shop, others
+
+  // Section 2 - Business Information
+  yearsInBusiness   Int?
+  numberOfBranches  Int?
+  employees         Int?
+  seatingCapacity   Int? // restaurants
+  businessHours     String?
+  weeklyOff         String?
+  homeDelivery      Boolean @default(false)
+  ownDeliveryStaff  Boolean @default(false)
+  ownWebsite        Boolean @default(false)
+  ownMobileApp      Boolean @default(false)
+  ownWhatsappOrdering Boolean @default(false)
+
+  // Section 3 - Online Presence (JSON array of platforms)
+  onlinePlatforms String @default("[]") // JSON: ["swiggy","zomato",...]
+
+  // Section 4 - Business Numbers
+  dailyOrdersWalkIn  Int?
+  dailyOrdersOnline  Int?
+  dailyOrdersPhone   Int?
+  dailyOrdersWhatsapp Int?
+  averageOrderValue  Float?
+  monthlyRevenue     Float?
+  peakHours          String?
+  bestSellingProducts String?
+
+  // Section 5 - Pain Points (JSON: {painPoint: rating 1-5})
+  painPoints String @default("{}") // JSON
+
+  // Section 6 - Commission
+  currentCommission    Float?
+  platformCommissions  String @default("{}") // JSON: {swiggy: 25, zomato: 28}
+  deliveryCharges      Float?
+  whoPaysDelvery       String?
+  whoPaysPackaging     String?
+  whoPaysPromotions    String?
+  whoPaysDiscounts     String?
+
+  // Section 7 - Settlements
+  settlementFrequency String? // daily, weekly, monthly
+  settlementProblems  String?
+
+  // Section 8 - Marketing
+  marketingChannels String @default("[]") // JSON array
+
+  // Section 9 - AI Interest
+  aiInterests String @default("[]") // JSON array
+
+  // Section 10 - RynOne Validation
+  wouldJoinRynOne    String? // immediately, within_3_months, maybe, no
+
+  // Section 11 - Feature Voting (JSON: {feature: importance 1-5})
+  featureVotes String @default("{}") // JSON
+
+  // Section 12 - Documents (file paths)
+  gstDoc         String?
+  fssaiDoc       String?
+  panDoc         String?
+  visitingCard   String?
+  menuPhoto      String?
+  shopPhoto      String?
+  ownerPhoto     String?
+  shopFrontPhoto String?
+
+  // Section 13 - AI Observation
+  businessSentiment String? // positive, neutral, negative
+  interestLevel     String? // hot, warm, cold
+  estimatedOrders   Int?
+  potentialRevenue  Float?
+  riskLevel         String? // low, medium, high
+
+  // Voice of the Market
+  voiceNoteUrl    String?
+  voiceTranscript String?
+  marketFeedback  String? // "If you were the founder..."
+
+  // AI Generated
+  aiSummary  String?
+  leadScore  Int?     @default(0) // 0-100
+  leadStatus String   @default("new") // new, qualified, interested, negotiation, onboarded, active_merchant, not_interested, follow_up (legacy)
+  stageChangedAt DateTime?
+
+  followUps        FollowUp[]
+  documents        Document[]
+  activities       Activity[]
+  stageTransitions StageTransition[]
+  missions         Mission[]
+}
+
+model RiderSurvey {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bdeId     String
+  bde       User     @relation(fields: [bdeId], references: [id])
+
+  // Basic Info
+  riderName   String
+  age         Int?
+  gender      String?
+  phone       String
+  address     String?
+  vehicleType String? // bike, scooter, bicycle, ev
+  licenseNo   String?
+  rcNumber    String?
+  insurance   Boolean @default(false)
+  aadhaar     String?
+  pan         String?
+
+  // Experience
+  currentPlatforms String @default("[]") // JSON array
+  experienceMonths Int?
+
+  // Earnings
+  dailyEarnings       Float?
+  monthlyEarnings     Float?
+  fuelCost            Float?
+  maintenanceCost     Float?
+  netSavings          Float?
+
+  // Working Pattern
+  hoursPerDay    Int?
+  peakHours      String?
+  preferredArea  String?
+  nightShift     Boolean @default(false)
+
+  // Pain Points (JSON: {point: rating 1-5})
+  painPoints String @default("{}") // JSON
+
+  // Waiting
+  averageWaiting    Int? // minutes
+  whoShouldPayWait  String? // restaurant, platform, nobody
+
+  // Understanding & Satisfaction
+  understandsPayout  String? // yes, no, sometimes
+  satisfactionRating Int?    // 1-10
+  wouldRecommend     Boolean?
+
+  // Benefits wanted (JSON array)
+  wantedBenefits String @default("[]")
+
+  // Switching
+  wouldJoinRynOne String? // yes, no, maybe
+
+  // Feature Voting (JSON: {feature: importance 1-5})
+  featureVotes String @default("{}")
+
+  // AI Observation
+  professionalism   Int? // 1-5
+  communication     Int? // 1-5
+  vehicleCondition  Int? // 1-5
+  documentsComplete Boolean @default(false)
+  riskLevel         String? // low, medium, high
+  likelihoodToJoin  String? // high, medium, low
+  overallScore      Int?    // 0-100
+
+  // Voice
+  voiceNoteUrl    String?
+  voiceTranscript String?
+  marketFeedback  String?
+
+  // AI Generated
+  aiSummary  String?
+  leadScore  Int?     @default(0)
+  leadStatus String   @default("new")
+
+  // GPS
+  gpsLat Float?
+  gpsLng Float?
+
+  documents  Document[]
+  activities Activity[]
+}
+
+model FollowUp {
+  id          String   @id @default(cuid())
+  surveyId    String
+  survey      VendorSurvey @relation(fields: [surveyId], references: [id])
+  bdeId       String
+  bde         User     @relation(fields: [bdeId], references: [id])
+  scheduledAt DateTime
+  notes       String?
+  status      String   @default("pending") // pending, completed, cancelled
+  completedAt DateTime?
+  priority    String   @default("medium") // low, medium, high, urgent
+  category    String   @default("follow_up") // follow_up, call, visit, demo, negotiation, onboarding
+  reminderAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  activities Activity[]
+}
+
+model Activity {
+  id             String        @id @default(cuid())
+  type           String // note, call, email, whatsapp, visit, status_change
+  content        String
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  vendorSurveyId String?
+  vendorSurvey   VendorSurvey? @relation(fields: [vendorSurveyId], references: [id])
+  riderSurveyId  String?
+  riderSurvey    RiderSurvey?  @relation(fields: [riderSurveyId], references: [id])
+  followUpId     String?
+  followUp       FollowUp?     @relation(fields: [followUpId], references: [id])
+  metadata       String?       // JSON: {channel, duration, outcome, etc.}
+  createdAt      DateTime      @default(now())
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  message     String
+  type        String   @default("reminder") // reminder, overdue, system, achievement
+  read        Boolean  @default(false)
+  actionUrl   String?
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model Document {
+  id             String        @id @default(cuid())
+  vendorSurveyId String?
+  vendorSurvey   VendorSurvey? @relation(fields: [vendorSurveyId], references: [id])
+  riderSurveyId  String?
+  riderSurvey    RiderSurvey?  @relation(fields: [riderSurveyId], references: [id])
+  type           String // gst, fssai, pan, visiting_card, menu, shop_photo, owner_photo, license, rc, insurance, aadhaar
+  fileName       String
+  filePath       String
+  fileSize       Int?
+  createdAt      DateTime @default(now())
+}
+
+model DailyReport {
+  id        String   @id @default(cuid())
+  bdeId     String
+  bde       User     @relation(fields: [bdeId], references: [id])
+  date      DateTime
+  visited   Int      @default(0)
+  completed Int      @default(0)
+  interested Int     @default(0)
+  strongLeads Int    @default(0)
+  followUps  Int     @default(0)
+  summary    String?
+  createdAt  DateTime @default(now())
+}
+
+model StageTransition {
+  id        String       @id @default(cuid())
+  surveyId  String
+  survey    VendorSurvey @relation(fields: [surveyId], references: [id])
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  fromStage String
+  toStage   String
+  notes     String?
+  createdAt DateTime     @default(now())
+}
+
+// ─── CAO: Cortex Autonomous Operations ──────────────────────────
+
+model Mission {
+  id          String    @id @default(cuid())
+  title       String
+  type        String    // merchant_acquisition, follow_up_campaign, territory_blitz, pipeline_review, morning_briefing
+  status      String    @default("planning") // planning, executing, awaiting_approval, completed, failed, cancelled
+  progress    Int       @default(0) // 0-100
+  merchantId  String?
+  merchant    VendorSurvey? @relation(fields: [merchantId], references: [id])
+  config      String    @default("{}") // JSON
+  result      String?   // JSON
+  error       String?
+  createdById String
+  createdBy   User      @relation("MissionCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  playbookName  String?   // which playbook this mission executes
+  currentStage  String?   // current playbook stage id
+  prospectId    String?   // prospect this mission targets
+
+  steps     MissionStep[]
+  events    CortexEvent[]
+  workItems WorkItem[]
+  outcome   Outcome?
+}
+
+model MissionStep {
+  id               String    @id @default(cuid())
+  missionId        String
+  mission          Mission   @relation(fields: [missionId], references: [id])
+  agentId          String
+  sequence         Int
+  title            String
+  status           String    @default("pending") // pending, running, completed, failed, awaiting_approval, skipped
+  input            String    @default("{}") // JSON
+  output           String?   // JSON
+  reasoning        String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  error            String?
+  approvalRequired Boolean   @default(false)
+  approvedById     String?
+  approvedBy       User?     @relation("StepApprover", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model CortexEvent {
+  id            String    @id @default(cuid())
+  type          String    // merchant.analyzed.v1, proposal.generated.v1, etc.
+  version       String    @default("1")
+  payload       String    @default("{}") // JSON
+  source        String    // agent id or "system" or "user"
+  correlationId String?
+  missionId     String?
+  mission       Mission?  @relation(fields: [missionId], references: [id])
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model ApprovalPolicy {
+  id          String   @id @default(cuid())
+  action      String   @unique // proposal.send, meeting.schedule, etc.
+  policy      String   @default("approval_required") // automatic, approval_required
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Discovery Engine ───────────────────────────────────────────
+
+model DiscoverySource {
+  id          String   @id @default(cuid())
+  name        String   @unique // manual, csv_import, partner_directory, website_scraper, etc.
+  displayName String
+  type        String   // manual, csv, api, scraper, directory
+  config      String   @default("{}") // JSON: provider-specific config (URLs, API keys ref, filters)
+  trustScore  Int      @default(50) // 0-100: how reliable this source is
+  active      Boolean  @default(true)
+  schedule    String?  // cron expression: null = manual only
+  capabilities String  @default("{}") // JSON: { pagination, scheduling, incremental, retry }
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  runs       DiscoveryRun[]
+  candidates CompanyCandidate[]
+}
+
+model DiscoveryRun {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      DiscoverySource @relation(fields: [sourceId], references: [id])
+  status      String   @default("running") // running, completed, failed, cancelled
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  error       String?
+  stats       String   @default("{}") // JSON: { discovered, signals, qualified, promoted, failed, duplicates }
+  triggeredBy String   // system, manual, schedule
+  createdAt   DateTime @default(now())
+
+  candidates CompanyCandidate[]
+}
+
+/// Live GPS breadcrumbs from a BDE's device while they are on shift.
+///
+/// Written only while the BDE is logged in and has an active shift — never
+/// in the background and never off-shift. Each row is one ping; the newest per
+/// BDE is their live position, and the trail is their route for the day.
+model BdeLocation {
+  id        String   @id @default(cuid())
+  bdeId     String
+  bde       User     @relation(fields: [bdeId], references: [id])
+  lat       Float
+  lng       Float
+  /// GPS accuracy radius in metres, as reported by the device.
+  accuracy  Float?
+  /// Device speed in m/s, when the platform provides it.
+  speed     Float?
+  /// Battery level 0-100, so the admin knows when a device is about to die.
+  battery   Int?
+  createdAt DateTime @default(now())
+
+  @@index([bdeId, createdAt])
+  @@index([createdAt])
+}
+
+/// Chain-of-command messages between agents in the Cortex org.
+/// direction: "down" = delegation (manager→lead→agent), "up" = report back.
+model AgentMessage {
+  id         String   @id @default(cuid())
+  fromAgent  String
+  toAgent    String
+  direction  String   @default("down")
+  department String?
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([department])
+}
+
+model CompanyCandidate {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      DiscoverySource @relation(fields: [sourceId], references: [id])
+  runId       String?
+  run         DiscoveryRun? @relation(fields: [runId], references: [id])
+  status      String   @default("new") // new, enriching, qualified, promoted, rejected, duplicate, archived
+  companyName String
+  website     String?
+  industry    String?
+  size        String?
+  employees   Int?
+  location    String?
+  country     String   @default("India")
+  description String?
+  rawData     String   @default("{}") // JSON: original data from provider
+  confidence  Int      @default(50) // 0-100: how confident we are in the data
+  qualificationScore Int?
+  qualificationGrade String?
+  analysisReport     String?   // AI-generated Ryvan-fit analysis (markdown)
+  analyzedAt         DateTime? // when the analysis report was generated
+  rejectionReason    String?
+  deduplicatedWith   String? // id of existing Prospect/Company if duplicate
+  prospectId  String?
+  prospect    Prospect? @relation(fields: [prospectId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  signals DiscoverySignal[]
+}
+
+model DiscoverySignal {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   CompanyCandidate @relation(fields: [candidateId], references: [id])
+  prospectId  String?
+  prospect    Prospect? @relation(fields: [prospectId], references: [id])
+  type        String   // hiring, technology, cloud, growth, pain, partnership, funding, certification, expansion
+  source      String   // which provider or extraction method
+  value       String   // e.g. "QA Engineer", "Azure", "Series B"
+  category    String?  // sub-category for grouping
+  confidence  Int      @default(70) // 0-100
+  importance  String   @default("medium") // low, medium, high, critical
+  evidence    String?  // verbatim text that proves this signal: "Experience with Azure DevOps required."
+  evidenceUrl String?  // URL where evidence was found
+  metadata    String   @default("{}") // JSON: extra context
+  detectedAt  DateTime @default(now())
+}
+
+model Prospect {
+  id          String   @id @default(cuid())
+  companyName String
+  website     String?
+  industry    String?
+  size        String?
+  employees   Int?
+  location    String?
+  country     String   @default("India")
+  description String?
+  techStack   String   @default("[]") // JSON array
+  cloudProvider String?
+  painPoints  String   @default("[]") // JSON array
+  growthSignals String  @default("[]") // JSON array
+  qualificationScore Int?
+  qualificationGrade String?
+  recommendedServices String @default("[]") // JSON array
+  aiSummary   String?
+  confidence  Int?
+  freshness   Int      @default(100) // 0-100: decays over time, triggers refresh when low
+  lastRefreshedAt DateTime @default(now())
+  refreshRequired Boolean @default(false)
+  status      String   @default("new") // new, researching, qualified, approved, promoted, rejected, archived
+  source      String   // which DiscoverySource.name
+  promotedToCompanyId String? @unique
+  promotedAt  DateTime?
+  assignedToId String?
+  assignedTo   User?   @relation("ProspectAssigned", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User    @relation("ProspectCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidates CompanyCandidate[]
+  signals    DiscoverySignal[]
+  intelligence AccountIntelligence[]
+  insights   Insight[]
+  graphNodes GraphNode[]
+}
+
+// ─── Account Intelligence Engine ────────────────────────────────
+
+model AccountIntelligence {
+  id          String   @id @default(cuid())
+  prospectId  String
+  prospect    Prospect @relation(fields: [prospectId], references: [id])
+  version     Int      @default(1)
+  status      String   @default("requested") // requested, collecting, correlating, inferring, reviewing, published, refreshing, archived
+  triggeringEvent String? // event type that initiated this intelligence version
+  overallConfidence Int?
+  overallFreshness  Int   @default(100)
+  meetingBrief String? // JSON: { objective, questions, objections, services, budget, competitors, nextAction }
+  diffFromPrevious String? // JSON: changes from previous version
+  createdAt   DateTime @default(now())
+  publishedAt DateTime?
+
+  sections IntelligenceSection[]
+  insights Insight[]
+
+  @@unique([prospectId, version])
+}
+
+model IntelligenceSection {
+  id             String   @id @default(cuid())
+  intelligenceId String
+  intelligence   AccountIntelligence @relation(fields: [intelligenceId], references: [id])
+  type           String   // executive_summary, technology, business, people, relationships, pain_analysis, recommendations, risks, competitive
+  title          String
+  content        String   @default("{}") // JSON: structured data for this section
+  confidence     Int      @default(50)
+  freshness      Int      @default(100)
+  evidenceCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+}
+
+model Insight {
+  id             String   @id @default(cuid())
+  intelligenceId String?
+  intelligence   AccountIntelligence? @relation(fields: [intelligenceId], references: [id])
+  prospectId     String
+  prospect       Prospect @relation(fields: [prospectId], references: [id])
+  type           String   // inference, correlation, prediction
+  title          String
+  description    String
+  confidence     Int      @default(70)
+  importance     String   @default("medium") // low, medium, high, critical
+  derivedFrom    String   @default("[]") // JSON: array of signal IDs that produced this insight
+  evidence       String?  // supporting evidence text
+  recommendation String?  // recommended action
+  recommendedService String? // specific Ryvan service
+  createdAt      DateTime @default(now())
+}
+
+model InferenceRule {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String
+  conditions  String  // JSON: [{ signalType, valuePattern, required }]
+  insight     String  // the insight conclusion to generate
+  recommendedService String? // Ryvan service to recommend
+  confidenceBase Int  @default(80)
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Execution Engine (Cortex OS) ───────────────────────────────
+
+model Playbook {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  description String
+  version     String   @default("1.0")
+  domain      String   @default("growth") // growth, delivery, operations, finance, hr
+  stages      String   // JSON: ordered array of stage definitions
+  triggers    String   @default("[]") // JSON: auto-start conditions
+  active      Boolean  @default(true)
+  metrics     String   @default("{}") // JSON: aggregated KPIs { avgDuration, conversionRate, totalRevenue, totalRuns }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workItems   WorkItem[]
+}
+
+model WorkItem {
+  id            String    @id @default(cuid())
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id])
+  playbookId    String?
+  playbook      Playbook? @relation(fields: [playbookId], references: [id])
+  stageId       String    // playbook stage id
+  stageName     String    // display name
+  executorType  String    // proposal, email, meeting, crm, approval, notification, calendar, intelligence
+  sequence      Int
+  status        String    @default("pending") // pending, running, waiting_approval, approved, completed, failed, skipped
+  input         String    @default("{}") // JSON
+  output        String    @default("{}") // JSON
+  error         String?
+  approvalRequired Boolean @default(false)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  durationMs    Int?      // execution time in ms
+  createdAt     DateTime  @default(now())
+}
+
+model Outcome {
+  id            String   @id @default(cuid())
+  missionId     String   @unique
+  mission       Mission  @relation(fields: [missionId], references: [id])
+  result        String   // won, lost, no_response, rejected, deferred
+  reason        String?
+  evidence      String?
+  revenue       Float?
+  duration      Int?     // days from mission start to outcome
+  ownerId       String?
+  lessons       String   @default("[]") // JSON array
+  recommendations String @default("[]") // JSON array
+  metadata      String   @default("{}") // JSON
+  createdAt     DateTime @default(now())
+}
+
+model ExecutionRule {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  conditions   String   // JSON: [{ field, operator, value }]
+  playbookName String   // which playbook to trigger
+  priority     Int      @default(50) // higher = checked first
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Relationship Intelligence (Knowledge Graph) ───────────────
+
+model GraphNode {
+  id          String   @id @default(cuid())
+  type        String   // company, person, technology, vendor, cloud_provider, industry, certification, partner, service
+  name        String
+  normalizedName String // lowercase, trimmed — for dedup
+  metadata    String   @default("{}") // JSON: extra context (title, url, etc.)
+  prospectId  String?  // link to Prospect if type=company
+  prospect    Prospect? @relation(fields: [prospectId], references: [id])
+  signalId    String?  // link to signal that created this node
+  confidence  Int      @default(70)
+  createdAt   DateTime @default(now())
+
+  outgoingEdges GraphEdge[] @relation("EdgeSource")
+  incomingEdges GraphEdge[] @relation("EdgeTarget")
+
+  @@unique([type, normalizedName])
+}
+
+model GraphEdge {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      GraphNode @relation("EdgeSource", fields: [sourceId], references: [id])
+  targetId    String
+  target      GraphNode @relation("EdgeTarget", fields: [targetId], references: [id])
+  type        String   // uses, partners_with, hires_for, located_in, certified_in, competes_with, acquired, funded_by, vendors_with, works_at, industry_of, provides_service
+  strength    Int      @default(50) // 0-100
+  evidence    String?
+  prospectId  String?  // which prospect context
+  metadata    String   @default("{}") // JSON
+  createdAt   DateTime @default(now())
+
+  @@unique([sourceId, targetId, type])
+}
+
+model EcosystemInsight {
+  id            String   @id @default(cuid())
+  type          String   // cluster, pattern, opportunity, risk, cross_sell
+  title         String
+  description   String
+  confidence    Int      @default(70)
+  involvedNodes String   @default("[]") // JSON: array of node IDs
+  involvedEdges String   @default("[]") // JSON: array of edge IDs
+  prospectIds   String   @default("[]") // JSON: array of prospect IDs involved
+  recommendation String?
+  recommendedService String?
+  metadata      String   @default("{}") // JSON
+  createdAt     DateTime @default(now())
+}
+
+// ─── Growth Engine ──────────────────────────────────────────────
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  website     String?
+  industry    String   // healthcare, fintech, ecommerce, saas, logistics, manufacturing, education, retail, telecom, energy
+  size        String?  // startup, small, medium, large, enterprise
+  employees   Int?
+  location    String?
+  country     String   @default("India")
+  description String?
+
+  techStack      String @default("[]") // JSON array
+  cloudProvider  String? // aws, azure, gcp, hybrid, on_premise
+  currentVendors String @default("[]") // JSON array
+
+  qualificationScore Int?
+  qualificationGrade String? // A, B, C, D, F
+  qualificationData  String? // JSON: scoring breakdown
+
+  status       String  @default("discovered") // discovered, researching, qualified, outreach, engaged, meeting, proposal, won, lost, dormant
+  source       String? // partner_program, linkedin, procurement, referral, website, event, manual
+  sourceDetail String?
+
+  intelligence        String? // JSON: compiled intelligence
+  painPoints          String @default("[]") // JSON array
+  growthSignals       String @default("[]") // JSON array
+  recommendedServices String @default("[]") // JSON array
+  aiSummary           String?
+  confidence          Int?
+
+  assignedToId String?
+  assignedTo   User?   @relation("CompanyAssigned", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User    @relation("CompanyCreator", fields: [createdById], references: [id])
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastActivityAt DateTime?
+
+  contacts           Contact[]
+  opportunities      Opportunity[]
+  outreachSequences  OutreachSequence[]
+  growthActivities   GrowthActivity[]
+}
+
+model Contact {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  name      String
+  title     String?
+  email     String?
+  phone     String?
+  linkedin  String?
+  role      String? // decision_maker, influencer, user, champion, gatekeeper
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outreachSteps OutreachStep[]
+}
+
+model Opportunity {
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
+  title       String
+  description String?
+  services    String  @default("[]") // JSON: ["qa_automation","ai_agents","cloud"]
+  estimatedValue Float?
+  probability    Int? // 0-100
+  stage       String  @default("identified") // identified, qualified, contacted, meeting, proposal, negotiation, won, lost
+  source      String?
+  lostReason  String?
+  wonDate     DateTime?
+
+  createdById String
+  createdBy   User   @relation("OpportunityCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OutreachSequence {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  type      String  // email, linkedin, multi_channel
+  status    String  @default("draft") // draft, active, paused, completed, cancelled
+  missionId String?
+
+  createdById String
+  createdBy   User   @relation("OutreachCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps OutreachStep[]
+}
+
+model OutreachStep {
+  id         String           @id @default(cuid())
+  sequenceId String
+  sequence   OutreachSequence @relation(fields: [sequenceId], references: [id])
+  contactId  String?
+  contact    Contact?         @relation(fields: [contactId], references: [id])
+  stepOrder  Int
+  type       String  // email, linkedin_connect, linkedin_message, phone_call, follow_up
+  subject    String?
+  content    String?
+  status     String  @default("pending") // pending, approved, sent, opened, replied, bounced, skipped
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  openedAt    DateTime?
+  repliedAt   DateTime?
+  approvalRequired Boolean @default(true)
+  resendMessageId  String?
+  createdAt   DateTime @default(now())
+
+  emailLog EmailLog? @relation
+}
+
+model EmailLog {
+  id              String    @id @default(cuid())
+  resendMessageId String?   @unique
+  workItemId      String?
+  outreachStepId  String?   @unique
+  outreachStep    OutreachStep? @relation(fields: [outreachStepId], references: [id])
+  prospectId      String?
+  contactId       String?
+  recipientEmail  String
+  fromEmail       String
+  fromName        String?
+  subject         String
+  status          String    @default("sent") // queued, sent, delivered, opened, clicked, bounced, complained
+  sentAt          DateTime  @default(now())
+  deliveredAt     DateTime?
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  bouncedAt       DateTime?
+  bounceReason    String?
+  metadata        String    @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model GrowthActivity {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  type      String  // research, qualification, outreach, meeting, proposal, note, discovery
+  content   String
+  userId    String
+  user      User    @relation("GrowthActivityUser", fields: [userId], references: [id])
+  metadata  String? // JSON
+  createdAt DateTime @default(now())
+}

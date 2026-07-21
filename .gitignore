@@ -1,0 +1,41 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+.env
+.env.local
+.env.production
+.env.*.local
+*.log
+coverage/
+.nyc_output/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.cache/
+.turbo/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Generated
+apps/cortex/src/generated/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude local settings
+.claude/settings.local.json
+
+# Testing
+playwright-report/
+test-results/
+
+# Docker volumes
+postgres-data/
+redis-data/

@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+*.db
+*.sqlite
+dev.db
+e2e
+.env
+.env.*
+!.env.production.example
+.claude
+*.md
+!README.md
+logs
+backups

@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - AIOS_ENV=development
+      - AIOS_LOG_LEVEL=debug
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - ryvan-net
+
+  ml-runtime:
+    build:
+      context: ./services/ml-runtime
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - AIOS_ENV=development
+    volumes:
+      - model-cache:/app/models
+    networks:
+      - ryvan-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - ryvan-net
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ryvan_aios
+      POSTGRES_USER: ryvan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ryvan_dev}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - ryvan-net
+
+networks:
+  ryvan-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+  pg-data:
+  model-cache:

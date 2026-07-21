@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../common" },
+    { "path": "../events" },
+    { "path": "../identity" },
+    { "path": "../models" },
+    { "path": "../memory" },
+    { "path": "../tool-registry" },
+    { "path": "../agent-runtime" },
+    { "path": "../agent-sdk" }
+  ]
+}
