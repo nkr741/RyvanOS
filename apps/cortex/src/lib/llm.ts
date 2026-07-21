@@ -51,7 +51,7 @@ export async function isLlmAvailable(): Promise<boolean> {
     const models = getAIOS().container.resolve<ModelService>("models");
     if (models.status() === "running") return true;
   } catch {
-    // AIOS not ready — fall through to legacy check
+    log.debug("AIOS not ready for LLM availability check");
   }
 
   if (ANTHROPIC_API_KEY) return true;
@@ -74,7 +74,7 @@ export async function chat(
       return await chatViaAIOS(models, messages, opts);
     }
   } catch {
-    // AIOS not available — fall through to legacy
+    log.debug("AIOS not available for chat, falling back to legacy");
   }
 
   // Legacy fallback

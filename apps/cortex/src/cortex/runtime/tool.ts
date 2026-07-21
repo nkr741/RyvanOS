@@ -46,6 +46,7 @@ class ToolRegistryAdapter {
       try {
         this.aiosService = getAIOS().container.resolve<ToolService>("tools");
       } catch {
+        log.debug("AIOS ToolService not available, using local registry only");
         return null;
       }
     }
@@ -81,7 +82,7 @@ class ToolRegistryAdapter {
           },
         );
       } catch {
-        // AIOS registration failed — tool still works via local registry
+        log.debug({ toolId: tool.id }, "AIOS tool registration failed, local registry still active");
       }
     }
   }

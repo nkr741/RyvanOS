@@ -4,6 +4,10 @@ import { bootstrapCAO } from "@/cortex/bootstrap";
 import { discoveryEngine } from "@/cortex/discovery";
 import { generateOutreach } from "@/cortex/analysis/outreach";
 import { isEnabled } from "@/lib/features";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:cron:autonomous-discovery");
 
 /**
  * Autonomous discovery cron.
@@ -100,7 +104,7 @@ function describeTarget(t: ScanTarget): string {
   return JSON.stringify(t).slice(0, 80);
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   const secret = process.env.CRON_SECRET;
   const provided =
     request.headers.get("x-cron-secret") || new URL(request.url).searchParams.get("secret");
@@ -144,7 +148,7 @@ export async function POST(request: NextRequest) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : "qualification failed";
           qualifyErrors.push(`candidate ${c.id}: ${msg}`);
-          console.error(`[discovery-cron] Failed to qualify candidate ${c.id}:`, msg);
+          log.error({ err: msg, candidateId: c.id }, "Failed to qualify candidate");
         }
       }
       if (qualifyErrors.length > 0) {
@@ -189,7 +193,7 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "draft generation failed";
       draftErrors.push(`candidate ${c.id}: ${msg}`);
-      console.error(`[discovery-cron] Failed to generate outreach for ${c.id}:`, msg);
+      log.error({ err: msg, candidateId: c.id }, "Failed to generate outreach");
     }
   }
 
@@ -201,4 +205,4 @@ export async function POST(request: NextRequest) {
     draftsGenerated,
     draftErrors: draftErrors.slice(0, 5),
   });
-}
+});

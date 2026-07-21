@@ -5,6 +5,10 @@ import { bootstrapCAO } from "@/cortex/bootstrap";
 import { discoveryEngine } from "@/cortex/discovery";
 import { generateFitReport } from "@/cortex/analysis/report";
 import { generateOutreach } from "@/cortex/analysis/outreach";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:growth:discovery");
 
 bootstrapCAO();
 
@@ -15,7 +19,7 @@ function preferredDiscoveryProvider(): string {
   return "autonomous_search";
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -122,12 +126,12 @@ export async function GET(request: NextRequest) {
       sources: topSources,
     });
   } catch (error) {
-    console.error("Discovery GET error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Discovery GET error");
     return NextResponse.json({ error: "Failed to fetch discovery data" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -260,7 +264,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
-    console.error("Discovery POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Discovery POST error");
     return NextResponse.json({ error: "Failed to process discovery request" }, { status: 500 });
   }
-}
+});

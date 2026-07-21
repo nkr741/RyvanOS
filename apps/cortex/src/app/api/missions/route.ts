@@ -3,8 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { bootstrapCAO } from "@/cortex/bootstrap";
 import { orchestrator } from "@/cortex/engine/orchestrator";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:missions");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -64,12 +68,12 @@ export async function GET(request: NextRequest) {
       awaitingApproval,
     });
   } catch (error) {
-    console.error("Missions GET error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Missions GET error");
     return NextResponse.json({ error: "Failed to fetch missions" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -100,12 +104,12 @@ export async function POST(request: NextRequest) {
     );
 
     orchestrator.executeMission(missionId).catch(err => {
-      console.error(`Mission ${missionId} execution error:`, err);
+      log.error({ err: err instanceof Error ? err.message : String(err) }, `Mission ${missionId} execution error`);
     });
 
     return NextResponse.json({ missionId, status: "executing" }, { status: 201 });
   } catch (error) {
-    console.error("Mission POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Mission POST error");
     return NextResponse.json({ error: "Failed to process mission request" }, { status: 500 });
   }
-}
+});

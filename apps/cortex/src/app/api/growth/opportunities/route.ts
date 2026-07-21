@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:growth:opportunities");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -40,12 +44,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ opportunities, stats });
   } catch (error) {
-    console.error("Growth opportunities GET error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth opportunities GET error");
     return NextResponse.json({ error: "Failed to fetch opportunities" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -95,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ opportunity }, { status: 201 });
   } catch (error) {
-    console.error("Growth opportunities POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth opportunities POST error");
     return NextResponse.json({ error: "Failed to create opportunity" }, { status: 500 });
   }
-}
+});

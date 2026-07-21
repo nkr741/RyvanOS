@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function POST(request: NextRequest) {
+const log = createLogger("api:auth:register");
+
+export const POST = withApi(async (request) => {
   try {
     const body = await request.json();
     const { email, password, name, role, phone } = body;
@@ -67,10 +71,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Registration error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Registration error");
     return NextResponse.json(
       { error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
+});

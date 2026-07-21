@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:ai");
+
 import {
   calculateOpportunityScore,
   assessDealHealth,
@@ -41,7 +46,7 @@ function buildMerchantData(survey: Record<string, unknown>) {
   };
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -257,7 +262,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid type. Use: merchant, founder, territory" }, { status: 400 });
   } catch (error) {
-    console.error("AI insights error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "AI insights error");
     return NextResponse.json({ error: "Failed to generate insights" }, { status: 500 });
   }
-}
+});

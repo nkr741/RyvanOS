@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:growth:analytics");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -101,7 +105,7 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error("Growth analytics error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth analytics error");
     return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 });
   }
-}
+});

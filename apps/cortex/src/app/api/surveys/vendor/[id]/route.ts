@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { generateAISummary, calculateLeadScore } from "@/lib/ai";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const log = createLogger("api:surveys:vendor");
+
+export const GET = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const survey = await prisma.vendorSurvey.findUnique({
       where: { id },
@@ -42,25 +43,22 @@ export async function GET(
 
     return NextResponse.json(survey);
   } catch (error) {
-    console.error("Error fetching vendor survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching vendor survey");
     return NextResponse.json(
       { error: "Failed to fetch vendor survey" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const existing = await prisma.vendorSurvey.findUnique({
       where: { id },
@@ -125,18 +123,15 @@ export async function PUT(
 
     return NextResponse.json(survey);
   } catch (error) {
-    console.error("Error updating vendor survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error updating vendor survey");
     return NextResponse.json(
       { error: "Failed to update vendor survey" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -151,7 +146,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const existing = await prisma.vendorSurvey.findUnique({
       where: { id },
@@ -171,10 +166,10 @@ export async function DELETE(
 
     return NextResponse.json({ message: "Survey deleted successfully" });
   } catch (error) {
-    console.error("Error deleting vendor survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error deleting vendor survey");
     return NextResponse.json(
       { error: "Failed to delete vendor survey" },
       { status: 500 }
     );
   }
-}
+});

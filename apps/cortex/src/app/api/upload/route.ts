@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:upload");
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -21,7 +25,7 @@ const ALLOWED_TYPES = [
   "audio/ogg",
 ];
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -105,10 +109,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error uploading file:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Failed to upload file");
     return NextResponse.json(
       { error: "Failed to upload file" },
       { status: 500 }
     );
   }
-}
+});

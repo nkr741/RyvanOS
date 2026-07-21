@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const log = createLogger("api:admin:team");
+
+export const PATCH = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -15,7 +16,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const body = await request.json();
 
     const updated = await prisma.user.update({
@@ -31,10 +32,10 @@ export async function PATCH(
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error("Error updating team member:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error updating team member");
     return NextResponse.json(
       { error: "Failed to update team member" },
       { status: 500 }
     );
   }
-}
+});

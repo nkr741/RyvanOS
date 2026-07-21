@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function POST(request: NextRequest) {
+const log = createLogger("api:auth:logout");
+
+export const POST = withApi(async (request) => {
   // Clear the auth cookie by overwriting it with an expired, empty value.
   // Attributes (name, path, secure) must match how login set it, otherwise the
   // browser won't treat this as the same cookie and won't clear it.
@@ -21,4 +25,4 @@ export async function POST(request: NextRequest) {
   });
 
   return response;
-}
+});

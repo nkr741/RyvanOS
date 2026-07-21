@@ -3,8 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isEnabled } from "@/lib/features";
 import { sendEmail } from "@/cortex/email";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:growth:outreach");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -52,12 +56,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid view" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/outreach] GET error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Outreach GET error");
     return NextResponse.json({ error: "Failed to load outreach data" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -151,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/outreach] POST error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Outreach POST error");
     return NextResponse.json({ error: "Failed to process outreach request" }, { status: 500 });
   }
-}
+});

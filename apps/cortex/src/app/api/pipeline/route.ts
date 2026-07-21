@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:pipeline");
 
 const PIPELINE_STAGES = [
   "new",
@@ -22,7 +26,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   not_interested: ["new", "qualified"],
 };
 
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -147,12 +151,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid view" }, { status: 400 });
   } catch (error) {
-    console.error("Pipeline GET error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Pipeline GET error");
     return NextResponse.json({ error: "Failed to fetch pipeline" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -224,7 +228,7 @@ export async function POST(request: NextRequest) {
       transition,
     });
   } catch (error) {
-    console.error("Pipeline POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Pipeline POST error");
     return NextResponse.json({ error: "Failed to move pipeline stage" }, { status: 500 });
   }
-}
+});

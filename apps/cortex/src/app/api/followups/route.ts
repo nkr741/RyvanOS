@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:followups");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -57,15 +61,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(followUps);
   } catch (error) {
-    console.error("Error fetching follow-ups:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching follow-ups");
     return NextResponse.json(
       { error: "Failed to fetch follow-ups" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -134,15 +138,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(followUp, { status: 201 });
   } catch (error) {
-    console.error("Error creating follow-up:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error creating follow-up");
     return NextResponse.json(
       { error: "Failed to create follow-up" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function PUT(request: NextRequest) {
+export const PUT = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -216,15 +220,15 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(followUp);
   } catch (error) {
-    console.error("Error updating follow-up:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error updating follow-up");
     return NextResponse.json(
       { error: "Failed to update follow-up" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -260,10 +264,10 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting follow-up:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error deleting follow-up");
     return NextResponse.json(
       { error: "Failed to delete follow-up" },
       { status: 500 }
     );
   }
-}
+});

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:field:location");
 
 /**
  * Live BDE location tracking.
@@ -22,7 +26,7 @@ const MIN_GAP_MS = 4_000;
 /** A trail longer than this is noise on a map. */
 const MAX_TRAIL_POINTS = 200;
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   const user = getCurrentUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -57,13 +61,13 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ ok: true, nextPingMs: PING_INTERVAL_MS });
   } catch (error) {
-    console.error("Location ping error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Location ping error");
     return NextResponse.json({ error: "Failed to record location" }, { status: 500 });
   }
-}
+});
 
 /** Admin-only live view: every BDE's latest fix, plus today's trail. */
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   const user = getCurrentUser(request);
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -120,7 +124,7 @@ export async function GET(request: NextRequest) {
       bdes: live,
     });
   } catch (error) {
-    console.error("Location read error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Location read error");
     return NextResponse.json({ error: "Failed to load locations" }, { status: 500 });
   }
-}
+});

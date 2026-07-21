@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { generateRiderAISummary, calculateRiderScore } from "@/lib/ai";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const log = createLogger("api:surveys:rider");
+
+export const GET = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const survey = await prisma.riderSurvey.findUnique({
       where: { id },
@@ -38,25 +39,22 @@ export async function GET(
 
     return NextResponse.json(survey);
   } catch (error) {
-    console.error("Error fetching rider survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching rider survey");
     return NextResponse.json(
       { error: "Failed to fetch rider survey" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const existing = await prisma.riderSurvey.findUnique({
       where: { id },
@@ -113,18 +111,15 @@ export async function PUT(
 
     return NextResponse.json(survey);
   } catch (error) {
-    console.error("Error updating rider survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error updating rider survey");
     return NextResponse.json(
       { error: "Failed to update rider survey" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -138,7 +133,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const existing = await prisma.riderSurvey.findUnique({
       where: { id },
@@ -156,10 +151,10 @@ export async function DELETE(
 
     return NextResponse.json({ message: "Survey deleted successfully" });
   } catch (error) {
-    console.error("Error deleting rider survey:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error deleting rider survey");
     return NextResponse.json(
       { error: "Failed to delete rider survey" },
       { status: 500 }
     );
   }
-}
+});

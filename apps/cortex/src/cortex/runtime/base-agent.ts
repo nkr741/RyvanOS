@@ -1,4 +1,7 @@
 import { AgentContext } from "./context";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("base-agent");
 
 // ─── Agent Manifest ─────────────────────────────────────────────
 // Every agent must declare capabilities. No agent without a manifest.
@@ -169,8 +172,8 @@ export abstract class BaseAgent {
       ctx.addReasoning(`FAILED: ${msg}`);
 
       if (this._state !== "failed" && this._state !== "sleeping" && this._state !== "idle") {
-        try { this.transition("failed"); } catch { /* already failed */ }
-        try { this.transition("sleeping"); } catch { /* already sleeping */ }
+        try { this.transition("failed"); } catch { log.debug({ agent: this.manifest.id }, "transition to failed skipped — already in terminal state"); }
+        try { this.transition("sleeping"); } catch { log.debug({ agent: this.manifest.id }, "transition to sleeping skipped"); }
         this._state = "idle";
       }
 

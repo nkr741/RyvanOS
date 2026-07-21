@@ -8,10 +8,14 @@ import {
   matchPlaybook,
   executorRegistry,
 } from "@/cortex/execution";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:growth:execution");
 
 bootstrapCAO();
 
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -125,12 +129,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid view" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/execution] GET error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Execution GET error");
     return NextResponse.json({ error: "Failed to load execution data" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -212,10 +216,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/execution] POST error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Execution POST error");
     return NextResponse.json({ error: "Failed to process execution request" }, { status: 500 });
   }
-}
+});
 
 function formatMission(m: {
   id: string;

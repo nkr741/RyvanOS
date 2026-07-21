@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:notifications");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -29,15 +33,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
-    console.error("Error fetching notifications:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching notifications");
     return NextResponse.json(
       { error: "Failed to fetch notifications" },
       { status: 500 }
     );
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -83,10 +87,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(notification, { status: 201 });
   } catch (error) {
-    console.error("Error with notification:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error with notification");
     return NextResponse.json(
       { error: "Failed to process notification" },
       { status: 500 }
     );
   }
-}
+});

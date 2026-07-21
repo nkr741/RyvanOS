@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:competitors:analysis");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -258,13 +262,13 @@ export async function GET(request: NextRequest) {
       areaBreakdown,
     });
   } catch (error) {
-    console.error("Error fetching competitor analysis:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching competitor analysis");
     return NextResponse.json(
       { error: "Failed to fetch competitor data" },
       { status: 500 }
     );
   }
-}
+});
 
 function extractArea(address: string): string | null {
   if (!address) return null;

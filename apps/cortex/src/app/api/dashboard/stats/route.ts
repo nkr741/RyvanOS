@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:dashboard:stats");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -15,13 +19,13 @@ export async function GET(request: NextRequest) {
 
     return getAdminStats();
   } catch (error) {
-    console.error("Error fetching dashboard stats:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching dashboard stats");
     return NextResponse.json(
       { error: "Failed to fetch dashboard stats" },
       { status: 500 }
     );
   }
-}
+});
 
 async function getBDEStats(bdeId: string) {
   const today = new Date();

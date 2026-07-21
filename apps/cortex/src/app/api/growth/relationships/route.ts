@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { bootstrapCAO } from "@/cortex/bootstrap";
 import { relationshipEngine } from "@/cortex/intelligence";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:growth:relationships");
 
 bootstrapCAO();
 
-export async function GET(request: NextRequest) {
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -47,12 +51,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid view" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/relationships] GET error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "GET error");
     return NextResponse.json({ error: "Failed to load relationships" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -98,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
-    console.error("[api/growth/relationships] POST error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "POST error");
     return NextResponse.json({ error: "Failed to update relationships" }, { status: 500 });
   }
-}
+});

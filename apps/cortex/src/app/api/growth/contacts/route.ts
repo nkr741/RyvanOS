@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function POST(request: NextRequest) {
+const log = createLogger("api:growth:contacts");
+
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ contact }, { status: 201 });
   } catch (error) {
-    console.error("Growth contacts POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth contacts POST error");
     return NextResponse.json({ error: "Failed to create contact" }, { status: 500 });
   }
-}
+});

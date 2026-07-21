@@ -5,18 +5,19 @@ import { bootstrapCAO } from "@/cortex/bootstrap";
 import { orchestrator } from "@/cortex/engine/orchestrator";
 import { approvalGateway } from "@/cortex/engine/approval";
 import { replayMission } from "@/cortex/engine/replay";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+const log = createLogger("api:missions:detail");
+
+export const GET = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const { searchParams } = new URL(request.url);
     const view = searchParams.get("view");
 
@@ -90,15 +91,12 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error("Mission GET error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Mission GET error");
     return NextResponse.json({ error: "Failed to fetch mission" }, { status: 500 });
   }
-}
+});
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export const POST = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -107,7 +105,7 @@ export async function POST(
 
     bootstrapCAO();
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const body = await request.json() as Record<string, unknown>;
     const action = body.action as string;
 
@@ -119,7 +117,7 @@ export async function POST(
         }
         await approvalGateway.grantApproval(stepId, user.id);
         orchestrator.resumeMission(id).catch(err => {
-          console.error(`Mission ${id} resume error:`, err);
+          log.error({ err: err instanceof Error ? err.message : String(err) }, `Mission ${id} resume error`);
         });
         return NextResponse.json({ status: "approved" });
       }
@@ -146,7 +144,7 @@ export async function POST(
         return NextResponse.json({ error: "Unknown action. Use: approve, deny, cancel, retry" }, { status: 400 });
     }
   } catch (error) {
-    console.error("Mission POST error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Mission POST error");
     return NextResponse.json({ error: "Failed to process mission" }, { status: 500 });
   }
-}
+});

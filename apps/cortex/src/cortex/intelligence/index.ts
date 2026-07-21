@@ -2,10 +2,13 @@ import { eventBus } from "@/cortex/runtime/event";
 import { intelligenceEngine } from "./engine";
 import { relationshipEngine } from "./relationships";
 import { seedInferenceRules } from "./inference";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("intelligence");
 
 export function bootstrapIntelligence(): void {
   seedInferenceRules().catch((err) => {
-    console.error("[intelligence] Failed to seed inference rules:", err);
+    log.error({ err: err instanceof Error ? err.message : err }, "failed to seed inference rules");
   });
 
   eventBus.subscribe("prospect.created.v1", async (event) => {
@@ -13,9 +16,9 @@ export function bootstrapIntelligence(): void {
     try {
       await intelligenceEngine.requestIntelligence(prospectId, "prospect.created.v1");
     } catch (err) {
-      console.error(
-        `[intelligence] Failed to gather intelligence for prospect ${prospectId}:`,
-        err,
+      log.error(
+        { err: err instanceof Error ? err.message : err, prospectId },
+        "failed to gather intelligence for prospect",
       );
     }
   });
@@ -26,9 +29,9 @@ export function bootstrapIntelligence(): void {
       await relationshipEngine.buildGraph(prospectId);
       await relationshipEngine.detectCrossCompanyPatterns();
     } catch (err) {
-      console.error(
-        `[intelligence] Failed to build relationship graph for prospect ${prospectId}:`,
-        err,
+      log.error(
+        { err: err instanceof Error ? err.message : err, prospectId },
+        "failed to build relationship graph",
       );
     }
   });

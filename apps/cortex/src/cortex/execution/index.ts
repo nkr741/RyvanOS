@@ -6,6 +6,9 @@ import { emailExecutor } from "./executors/email";
 import { meetingExecutor } from "./executors/meeting";
 import { crmExecutor } from "./executors/crm";
 import type { PlaybookDefinition } from "./types";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("execution");
 
 const DEFAULT_PLAYBOOKS: PlaybookDefinition[] = [
   {
@@ -149,12 +152,12 @@ export function bootstrapExecution(): void {
 
   for (const playbook of DEFAULT_PLAYBOOKS) {
     playbookRuntime.seedPlaybook(playbook).catch((err) => {
-      console.error(`[execution] Failed to seed playbook "${playbook.id}":`, err);
+      log.error({ err: err instanceof Error ? err.message : err, playbookId: playbook.id }, "failed to seed playbook");
     });
   }
 
   seedExecutionRules().catch((err) => {
-    console.error("[execution] Failed to seed execution rules:", err);
+    log.error({ err: err instanceof Error ? err.message : err }, "failed to seed execution rules");
   });
 }
 

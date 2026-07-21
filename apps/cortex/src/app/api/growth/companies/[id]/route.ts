@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const log = createLogger("api:growth:companies:detail");
+
+export const GET = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
 
     const company = await prisma.company.findUnique({
       where: { id },
@@ -48,22 +49,19 @@ export async function GET(
 
     return NextResponse.json({ company });
   } catch (error) {
-    console.error("Growth company detail error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth company detail error");
     return NextResponse.json({ error: "Failed to fetch company" }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withApi(async (request, ctx) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = await ctx.params;
     const body = await request.json() as Record<string, unknown>;
 
     const allowedFields = [
@@ -97,7 +95,7 @@ export async function PATCH(
 
     return NextResponse.json({ company });
   } catch (error) {
-    console.error("Growth company update error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Growth company update error");
     return NextResponse.json({ error: "Failed to update company" }, { status: 500 });
   }
-}
+});

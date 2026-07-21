@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAllFlags } from "@/lib/features";
+import { withApi } from "@/lib/api";
 
 async function checkDatabase(): Promise<"connected" | "disconnected"> {
   try {
@@ -32,7 +33,7 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
-export async function GET() {
+export const GET = withApi(async () => {
   const [db, migration] = await Promise.all([
     checkDatabase(),
     checkMigrations(),
@@ -55,4 +56,4 @@ export async function GET() {
     },
     { status: healthy ? 200 : 503 }
   );
-}
+});

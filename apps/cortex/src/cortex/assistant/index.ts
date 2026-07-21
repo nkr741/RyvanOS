@@ -303,7 +303,7 @@ function ensureToolsRegistered(toolService: ToolService): void {
         },
       );
     } catch {
-      // Already registered — skip
+      log.debug({ toolId: t.definition.name }, "AIOS tool registration skipped — already registered");
     }
   }
 }
@@ -322,7 +322,7 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
       return await chatViaAIOS(history);
     }
   } catch {
-    // AIOS not available — fall through to legacy
+    log.debug("AIOS not available for assistant, falling back to legacy path");
   }
 
   return chatViaLegacy(history);

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runDailyBriefing } from "@/cortex/org/briefing";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("api:cron:daily-briefing");
 
 /**
  * Daily founder briefing cron.
@@ -15,7 +19,7 @@ import { runDailyBriefing } from "@/cortex/org/briefing";
  */
 export const maxDuration = 300;
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 500 });
@@ -33,10 +37,10 @@ export async function POST(request: NextRequest) {
       briefing: result.briefing,
     });
   } catch (error) {
-    console.error("Daily briefing cron error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Daily briefing cron error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Briefing failed" },
       { status: 500 },
     );
   }
-}
+});

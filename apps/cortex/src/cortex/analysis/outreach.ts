@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { complete } from "@/lib/llm";
 import { RYVAN_IDENTITY, RYVAN_SERVICES } from "@/cortex/knowledge/ryvan";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("analysis:outreach");
 
 /**
  * AI SDR — generates a personalized cold-outreach email for a discovered
@@ -159,7 +162,7 @@ export async function generateOutreach(candidateId: string, force = false): Prom
         generatedBy = "ai";
       }
     } catch {
-      // model returned non-JSON — keep heuristic fallback
+      log.debug({ candidateId }, "LLM returned non-JSON for outreach draft, using heuristic fallback");
     }
   }
 

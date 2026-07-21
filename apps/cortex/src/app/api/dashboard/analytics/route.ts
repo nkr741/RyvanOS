@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:dashboard:analytics");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -228,10 +232,10 @@ export async function GET(request: NextRequest) {
       totalSurveysAnalyzed: allVendorSurveys.length,
     });
   } catch (error) {
-    console.error("Error fetching analytics:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "Error fetching analytics");
     return NextResponse.json(
       { error: "Failed to fetch analytics" },
       { status: 500 }
     );
   }
-}
+});

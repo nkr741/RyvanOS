@@ -335,7 +335,7 @@ class OrchestratorImpl {
           try {
             lastOutput = JSON.parse(step.output) as Record<string, unknown>;
           } catch {
-            /* ignore */
+            log.debug({ stepId: step.id, missionId }, "could not parse step output as JSON");
           }
         }
         continue;
@@ -473,6 +473,7 @@ class OrchestratorImpl {
         try {
           return JSON.parse(s.output);
         } catch {
+          log.debug({ stepId: s.id, missionId }, "could not parse step output as JSON");
           return null;
         }
       }

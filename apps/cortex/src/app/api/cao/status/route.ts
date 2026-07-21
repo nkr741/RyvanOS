@@ -6,8 +6,12 @@ import { agentRegistry } from "@/cortex/runtime/registry";
 import { toolRegistry } from "@/cortex/runtime/tool";
 import { approvalGateway } from "@/cortex/engine/approval";
 import { orchestrator } from "@/cortex/engine/orchestrator";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:cao:status");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest) {
       approvalPolicies,
     });
   } catch (error) {
-    console.error("CAO status error:", error);
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "CAO status error");
     return NextResponse.json({ error: "Failed to get system status" }, { status: 500 });
   }
-}
+});

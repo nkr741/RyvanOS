@@ -6,6 +6,9 @@ import { generateOutreach } from "@/cortex/analysis/outreach";
 import { bootstrapCAO } from "@/cortex/bootstrap";
 import { complete } from "@/lib/llm";
 import { locateBde } from "./field";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("delegation");
 
 /**
  * Chain-of-command delegation, like a real IT company.
@@ -162,9 +165,9 @@ async function runGrowthAssignment(
         await discoveryEngine.qualifyCandidate(c.id);
         qualified++;
       } catch (err) {
-        console.error(
-          `[delegation] Failed to qualify candidate ${c.id}:`,
-          err instanceof Error ? err.message : err,
+        log.error(
+          { err: err instanceof Error ? err.message : err, candidateId: c.id },
+          "failed to qualify candidate",
         );
       }
     }

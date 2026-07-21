@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { eventBus } from "@/cortex/runtime/event";
+import { withApi } from "@/lib/api";
+import { createLogger } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+const log = createLogger("api:founder:workspace");
+
+export const GET = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -381,12 +385,12 @@ export async function GET(request: NextRequest) {
       }),
     });
   } catch (err) {
-    console.error("[api/founder/workspace] GET error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Failed to load workspace");
     return NextResponse.json({ error: "Failed to load workspace" }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request) => {
   try {
     const user = getCurrentUser(request);
     if (!user || user.role !== "admin") {
@@ -417,7 +421,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
-    console.error("[api/founder/workspace] POST error:", err);
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Failed to save reflection");
     return NextResponse.json({ error: "Failed to save reflection" }, { status: 500 });
   }
-}
+});
