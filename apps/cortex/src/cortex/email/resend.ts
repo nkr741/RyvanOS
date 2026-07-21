@@ -2,9 +2,12 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { isEnabled } from "@/lib/features";
 import { eventBus } from "@/cortex/runtime/event";
+import { createLogger } from "@/lib/logger";
 
 const FROM_EMAIL = process.env.RYVAN_SENDER_EMAIL || "naveen@ryvanai.com";
 const FROM_NAME = process.env.RYVAN_SENDER_NAME || "Naveen Kumar Reddy";
+
+const log = createLogger("email");
 
 let resendClient: Resend | null = null;
 
@@ -28,6 +31,7 @@ export interface SendEmailParams {
   outreachStepId?: string;
   prospectId?: string;
   contactId?: string;
+  correlationId?: string;
 }
 
 export interface SendEmailResult {
@@ -44,6 +48,12 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
   const resend = getResend();
 
+  log.info(
+    { to: params.to, subject: params.subject, correlationId: params.correlationId },
+    "sending email",
+  );
+
+  const startTime = performance.now();
   const { data, error } = await resend.emails.send({
     from: `${FROM_NAME} <${FROM_EMAIL}>`,
     to: [params.to],
@@ -51,9 +61,13 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     text: params.body,
     replyTo: params.replyTo || FROM_EMAIL,
   });
+  const latencyMs = Math.round(performance.now() - startTime);
 
   if (error) {
-    console.error("[email] Resend error:", error);
+    log.error(
+      { err: error.message, to: params.to, latencyMs, correlationId: params.correlationId },
+      "email send failed",
+    );
     return { success: false, error: error.message };
   }
 
@@ -85,6 +99,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     type: "email.sent.v1",
     version: "1",
     source: "email.resend",
+    correlationId: params.correlationId,
     payload: {
       emailLogId: emailLog.id,
       resendMessageId,
@@ -93,8 +108,19 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       workItemId: params.workItemId,
       outreachStepId: params.outreachStepId,
       prospectId: params.prospectId,
+      latencyMs,
     },
   });
+
+  log.info(
+    {
+      emailLogId: emailLog.id,
+      resendMessageId,
+      latencyMs,
+      correlationId: params.correlationId,
+    },
+    "email sent",
+  );
 
   return {
     success: true,
@@ -114,9 +140,11 @@ export async function handleResendWebhook(
     where: { resendMessageId: emailId },
   });
   if (!emailLog) {
-    console.warn("[email] Webhook for unknown message:", emailId);
+    log.warn({ resendMessageId: emailId, eventType }, "webhook for unknown message");
     return;
   }
+
+  log.info({ emailLogId: emailLog.id, resendMessageId: emailId, eventType }, "processing webhook");
 
   const updates: Record<string, unknown> = {};
   let outreachStepUpdates: Record<string, unknown> | null = null;

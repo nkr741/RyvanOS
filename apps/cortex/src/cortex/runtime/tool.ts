@@ -11,6 +11,9 @@
 
 import type { ToolService } from "@ryvan/tool-registry";
 import { getAIOS } from "../../lib/aios";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("tool-registry");
 
 // ─── Types (unchanged — consumers depend on these) ─────────────
 
@@ -103,7 +106,7 @@ class ToolRegistryAdapter {
     try {
       return await tool.execute(input);
     } catch (err) {
-      console.error(`[tool-registry] Tool '${toolId}' execution failed:`, err);
+      log.error({ toolId, err: err instanceof Error ? err.message : err }, "tool execution failed");
       return {
         success: false,
         data: null,

@@ -12,6 +12,9 @@
 import type { EventBus as AIOSEventBus } from "@ryvan/events";
 import { getAIOS } from "../../lib/aios";
 import { prisma } from "@/lib/prisma";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("eventbus");
 
 // ─── Types (unchanged — consumers depend on these) ─────────────
 
@@ -58,9 +61,9 @@ class CortexEventBusAdapter {
               },
             });
           } catch (err) {
-            console.error(
-              "[EventBus] Failed to persist event:",
-              err instanceof Error ? err.message : err,
+            log.error(
+              { err: err instanceof Error ? err.message : err, eventType: event.type },
+              "failed to persist event",
             );
           }
         });

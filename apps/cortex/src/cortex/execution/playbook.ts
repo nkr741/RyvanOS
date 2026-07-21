@@ -2,8 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { eventBus } from "@/cortex/runtime/event";
 import { isEnabled } from "@/lib/features";
 import { sendEmail } from "@/cortex/email";
+import { createLogger } from "@/lib/logger";
 import { executorRegistry } from "./registry";
 import type { PlaybookStage, PlaybookDefinition } from "./types";
+
+const log = createLogger("playbook");
 
 class PlaybookRuntime {
   async seedPlaybook(def: PlaybookDefinition): Promise<void> {
@@ -273,16 +276,17 @@ class PlaybookRuntime {
           body: emailChannel.body,
           workItemId,
           prospectId: mission?.prospectId || undefined,
+          correlationId: workItem.missionId,
         });
         emailSent = result.success;
         emailError = result.error;
 
         if (!result.success) {
-          console.error(`[playbook] Email send failed for workItem ${workItemId}:`, result.error);
+          log.error({ workItemId, err: result.error }, "email send failed");
         }
       } else if (!opts?.recipientEmail) {
         emailError = "No recipient email provided — email draft approved but not sent";
-        console.warn(`[playbook] ${emailError}`);
+        log.warn({ workItemId }, emailError);
       }
     }
 
@@ -333,16 +337,49 @@ class PlaybookRuntime {
   }
 
   private async completeMission(missionId: string): Promise<void> {
+    const mission = await prisma.mission.findUnique({
+      where: { id: missionId },
+      select: { createdAt: true },
+    });
+    const durationMs = mission ? Date.now() - mission.createdAt.getTime() : null;
+
+    const costAgg = await prisma.llmUsageLog.aggregate({
+      where: { correlationId: missionId },
+      _sum: { estimatedCost: true, inputTokens: true, outputTokens: true },
+    });
+
     await prisma.mission.update({
       where: { id: missionId },
-      data: { status: "completed", progress: 100, completedAt: new Date() },
+      data: {
+        status: "completed",
+        progress: 100,
+        completedAt: new Date(),
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost || null,
+        inputTokens: costAgg._sum.inputTokens || null,
+        outputTokens: costAgg._sum.outputTokens || null,
+      },
     });
+
+    log.info(
+      {
+        missionId,
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost,
+        inputTokens: costAgg._sum.inputTokens,
+      },
+      "playbook mission completed",
+    );
 
     await eventBus.publish({
       type: "mission.playbook.completed.v1",
       version: "1",
       source: "execution.playbook",
-      payload: { missionId },
+      payload: {
+        missionId,
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost,
+      },
     });
   }
 

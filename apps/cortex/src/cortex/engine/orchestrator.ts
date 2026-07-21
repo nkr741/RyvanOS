@@ -3,6 +3,9 @@ import { AgentContext, type MissionContext } from "../runtime/context";
 import { eventBus } from "../runtime/event";
 import { agentRegistry } from "../runtime/registry";
 import { approvalGateway } from "./approval";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("orchestrator");
 
 // ─── Mission Plan ───────────────────────────────────────────────
 
@@ -282,6 +285,8 @@ class OrchestratorImpl {
       include: { steps: true },
     });
 
+    log.info({ missionId: mission.id, type, stepCount: stepPlans.length }, "mission created");
+
     await eventBus.publish({
       type: "mission.created.v1",
       version: "1",
@@ -300,11 +305,15 @@ class OrchestratorImpl {
   }
 
   async executeMission(missionId: string): Promise<void> {
+    const startTime = Date.now();
+
     const mission = await prisma.mission.update({
       where: { id: missionId },
       data: { status: "executing" },
       include: { steps: { orderBy: { sequence: "asc" } } },
     });
+
+    log.info({ missionId, type: mission.type }, "mission started");
 
     await eventBus.publish({
       type: "mission.started.v1",
@@ -362,6 +371,8 @@ class OrchestratorImpl {
             },
           });
 
+          log.info({ missionId, stepId: step.id }, "mission paused for approval");
+
           await eventBus.publish({
             type: "mission.paused.v1",
             version: "1",
@@ -386,6 +397,7 @@ class OrchestratorImpl {
         await this.failMission(
           missionId,
           `Agent '${step.agentId}' not found at step ${step.sequence}`,
+          startTime,
         );
         return;
       }
@@ -400,6 +412,12 @@ class OrchestratorImpl {
       };
 
       const ctx = new AgentContext(step.agentId, missionCtx);
+
+      log.info(
+        { missionId, stepId: step.id, agentId: step.agentId, sequence: step.sequence },
+        "executing step",
+      );
+
       const result = await agent.run(ctx, stepInput);
 
       if (!result.success) {
@@ -408,7 +426,11 @@ class OrchestratorImpl {
           missionId,
           (result.data?.error as string) || "Agent execution failed",
         );
-        await this.failMission(missionId, `Step ${step.sequence} (${step.title}) failed`);
+        await this.failMission(
+          missionId,
+          `Step ${step.sequence} (${step.title}) failed`,
+          startTime,
+        );
         return;
       }
 
@@ -457,6 +479,14 @@ class OrchestratorImpl {
       return null;
     });
 
+    const durationMs = Date.now() - startTime;
+
+    // Aggregate LLM cost for this mission
+    const costAgg = await prisma.llmUsageLog.aggregate({
+      where: { correlationId: missionId },
+      _sum: { estimatedCost: true, inputTokens: true, outputTokens: true },
+    });
+
     await prisma.mission.update({
       where: { id: missionId },
       data: {
@@ -464,13 +494,35 @@ class OrchestratorImpl {
         progress: 100,
         result: JSON.stringify({ steps: allOutputs, finalOutput: lastOutput }),
         completedAt: new Date(),
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost || null,
+        inputTokens: costAgg._sum.inputTokens || null,
+        outputTokens: costAgg._sum.outputTokens || null,
       },
     });
+
+    log.info(
+      {
+        missionId,
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost,
+        inputTokens: costAgg._sum.inputTokens,
+        outputTokens: costAgg._sum.outputTokens,
+      },
+      "mission completed",
+    );
 
     await eventBus.publish({
       type: "mission.completed.v1",
       version: "1",
-      payload: { missionId, title: mission.title },
+      payload: {
+        missionId,
+        title: mission.title,
+        durationMs,
+        totalCostUsd: costAgg._sum.estimatedCost,
+        inputTokens: costAgg._sum.inputTokens,
+        outputTokens: costAgg._sum.outputTokens,
+      },
       source: "orchestrator",
       missionId,
       correlationId: missionId,
@@ -487,6 +539,7 @@ class OrchestratorImpl {
       throw new Error("Mission not found or not awaiting approval");
     }
 
+    log.info({ missionId }, "mission resumed");
     await this.executeMission(missionId);
   }
 
@@ -500,6 +553,8 @@ class OrchestratorImpl {
       where: { missionId, status: { in: ["pending", "running", "awaiting_approval"] } },
       data: { status: "skipped" },
     });
+
+    log.info({ missionId }, "mission cancelled");
 
     await eventBus.publish({
       type: "mission.cancelled.v1",
@@ -533,6 +588,8 @@ class OrchestratorImpl {
       where: { id: missionId },
       data: { status: "executing", error: null },
     });
+
+    log.info({ missionId, retriedStepId: failedStep?.id }, "mission retried");
 
     await eventBus.publish({
       type: "mission.retried.v1",
@@ -579,6 +636,8 @@ class OrchestratorImpl {
   }
 
   private async failStep(stepId: string, missionId: string, error: string): Promise<void> {
+    log.error({ missionId, stepId, error }, "mission step failed");
+
     await prisma.missionStep.update({
       where: { id: stepId },
       data: { status: "failed", error, completedAt: new Date() },
@@ -594,16 +653,20 @@ class OrchestratorImpl {
     });
   }
 
-  private async failMission(missionId: string, error: string): Promise<void> {
+  private async failMission(missionId: string, error: string, startTime?: number): Promise<void> {
+    const durationMs = startTime ? Date.now() - startTime : null;
+
+    log.error({ missionId, error, durationMs }, "mission failed");
+
     await prisma.mission.update({
       where: { id: missionId },
-      data: { status: "failed", error },
+      data: { status: "failed", error, ...(durationMs ? { durationMs } : {}) },
     });
 
     await eventBus.publish({
       type: "mission.failed.v1",
       version: "1",
-      payload: { missionId, error },
+      payload: { missionId, error, durationMs },
       source: "orchestrator",
       missionId,
       correlationId: missionId,

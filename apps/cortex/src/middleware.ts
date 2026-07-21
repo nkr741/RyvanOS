@@ -35,10 +35,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(self)"
-  );
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
   return response;
 }
 
@@ -51,10 +48,7 @@ export function middleware(request: NextRequest) {
     if (request.method === "POST") {
       const allowed = rateLimit(`auth:${ip}`, 10, 60_000);
       if (!allowed) {
-        return NextResponse.json(
-          { error: "Too many attempts. Try again later." },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
       }
     }
   }
@@ -63,10 +57,7 @@ export function middleware(request: NextRequest) {
   if (pathname === "/api/upload" && request.method === "POST") {
     const allowed = rateLimit(`upload:${ip}`, 20, 60_000);
     if (!allowed) {
-      return NextResponse.json(
-        { error: "Upload rate limit exceeded." },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: "Upload rate limit exceeded." }, { status: 429 });
     }
   }
 
@@ -74,10 +65,7 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/api/")) {
     const allowed = rateLimit(`api:${ip}`, 200, 60_000);
     if (!allowed) {
-      return NextResponse.json(
-        { error: "Rate limit exceeded." },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: "Rate limit exceeded." }, { status: 429 });
     }
   }
 
@@ -90,7 +78,18 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
+  // Generate request ID — prefer client-supplied, fall back to generated
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+
+  response.headers.set("x-request-id", requestId);
+
   return addSecurityHeaders(response);
 }
 

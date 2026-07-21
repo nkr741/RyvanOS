@@ -2,22 +2,17 @@
  * Cortex Assistant — JARVIS, the founder's conversational agent.
  *
  * Sprint 3: Fully on AIOS infrastructure.
- * - LLM calls through ModelService (Goal 1)
- * - All 7 tools through ToolService (Goal 2)
- * - Conversation context through MemoryManager (Goal 3)
- * - Every action emits events for audit trail (Goal 4)
- * - Latency instrumentation on model/tools/total (Goal 5)
- *
- * Falls back to direct Anthropic SDK if AIOS is unavailable.
+ * Sprint 4.3: Cost/latency persistence, structured logging.
  */
 
-import type { ModelService, ChatMessage, ToolDefinition } from "@ryvan/models";
+import type { ModelService, ChatMessage, ToolDefinition, TokenUsage } from "@ryvan/models";
 import type { ToolService } from "@ryvan/tool-registry";
 import type { MemoryManager } from "@ryvan/memory";
 import type { EventBus } from "@ryvan/events";
 import { getAIOS } from "@/lib/aios";
-
+import { createLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+
 import { getOrgStatus, DEPARTMENTS } from "@/cortex/org";
 import { delegate, getRecentMessages, fieldActivity } from "@/cortex/org/delegation";
 import { locateBde } from "@/cortex/org/field";
@@ -27,6 +22,8 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const MAX_STEPS = 6;
+
+const log = createLogger("assistant");
 
 export interface ChatTurn {
   role: "user" | "assistant";
@@ -331,7 +328,7 @@ export async function chatWithAssistant(history: ChatTurn[]): Promise<string> {
   return chatViaLegacy(history);
 }
 
-// ─── AIOS path (Sprint 3) ─────────────────────────────────────
+// ─── AIOS path (Sprint 3 + Sprint 4.3 cost tracking) ─────────
 
 async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
   const platform = getAIOS();
@@ -347,7 +344,11 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
   let toolTimeMs = 0;
   let toolCallCount = 0;
 
-  // Goal 4: Emit query event
+  // Accumulate usage across all model calls in this turn
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCostUsd = 0;
+
   const userMessage = history[history.length - 1]?.content || "";
   await eventBus.emit(
     "assistant:query",
@@ -358,7 +359,6 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
     { source: "jarvis" },
   );
 
-  // Build messages with system prompt
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM },
     ...history
@@ -366,10 +366,8 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
       .map((t) => ({ role: t.role as "user" | "assistant", content: t.content })),
   ];
 
-  // Tool definitions for the model
   const modelTools: ToolDefinition[] = JARVIS_TOOLS.map((t) => t.definition);
 
-  // Goal 1: Tool-use loop through ModelService
   for (let step = 0; step < MAX_STEPS; step++) {
     const modelStart = performance.now();
     const response = await models.chat({
@@ -379,13 +377,33 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
       maxTokens: 1024,
       temperature: 0.4,
     });
-    modelTimeMs += performance.now() - modelStart;
+    const modelElapsed = performance.now() - modelStart;
+    modelTimeMs += modelElapsed;
+
+    // Accumulate cost
+    totalInputTokens += response.usage.inputTokens;
+    totalOutputTokens += response.usage.outputTokens;
+    totalCostUsd += response.usage.estimatedCost;
+
+    log.info(
+      {
+        step: step + 1,
+        model: response.model,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        costUsd: response.usage.estimatedCost,
+        latencyMs: Math.round(modelElapsed),
+      },
+      "assistant model call",
+    );
+
+    // Persist each model call's usage
+    await persistAssistantUsage(response.usage, Math.round(modelElapsed), response.model);
 
     if (response.finishReason !== "tool_calls" || !response.toolCalls?.length) {
       const text = response.content.trim();
       const reply = text || "(no reply)";
 
-      // Goal 3: Store conversation summary in memory
       await memory.store(
         "conversation",
         "jarvis",
@@ -398,8 +416,6 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
         { importance: 0.6 },
       );
 
-      // Goal 4: Emit response event
-      // Goal 5: Include latency metrics
       const totalMs = Math.round(performance.now() - totalStart);
       await eventBus.emit(
         "assistant:response",
@@ -412,21 +428,37 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
             toolMs: Math.round(toolTimeMs),
             totalMs,
           },
+          cost: {
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            totalTokens: totalInputTokens + totalOutputTokens,
+            estimatedCostUsd: totalCostUsd,
+          },
         },
         { source: "jarvis" },
+      );
+
+      log.info(
+        {
+          totalMs,
+          steps: step + 1,
+          toolCallCount,
+          totalInputTokens,
+          totalOutputTokens,
+          totalCostUsd,
+        },
+        "assistant turn completed",
       );
 
       return reply;
     }
 
-    // Add assistant message with tool calls
     messages.push({
       role: "assistant",
       content: response.content,
       toolCalls: response.toolCalls,
     });
 
-    // Goal 2: Execute tools and add results
     for (const tc of response.toolCalls) {
       const handler = toolHandlers.get(tc.name);
       let output: unknown;
@@ -441,12 +473,15 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
         }
       } catch (e) {
         output = { error: e instanceof Error ? e.message : "tool failed" };
+        log.error(
+          { tool: tc.name, err: e instanceof Error ? e.message : e },
+          "tool execution failed",
+        );
       }
       const toolElapsed = performance.now() - toolStart;
       toolTimeMs += toolElapsed;
       toolCallCount++;
 
-      // Goal 4: Emit tool event with latency
       await eventBus.emit(
         "assistant:tool_called",
         {
@@ -473,12 +508,41 @@ async function chatViaAIOS(history: ChatTurn[]): Promise<string> {
       steps: MAX_STEPS,
       toolCallCount,
       latency: { modelMs: Math.round(modelTimeMs), toolMs: Math.round(toolTimeMs), totalMs },
+      cost: {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens: totalInputTokens + totalOutputTokens,
+        estimatedCostUsd: totalCostUsd,
+      },
       maxStepsReached: true,
     },
     { source: "jarvis" },
   );
 
   return "I've done a few steps but hit my limit — could you narrow that down a bit?";
+}
+
+async function persistAssistantUsage(
+  usage: TokenUsage,
+  latencyMs: number,
+  model: string,
+): Promise<void> {
+  try {
+    await prisma.llmUsageLog.create({
+      data: {
+        model,
+        provider: "anthropic",
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        totalTokens: usage.totalTokens,
+        estimatedCost: usage.estimatedCost,
+        latencyMs,
+        source: "assistant",
+      },
+    });
+  } catch (err) {
+    log.warn({ err }, "failed to persist assistant usage");
+  }
 }
 
 // ─── Legacy path (direct Anthropic SDK — fallback) ────────────

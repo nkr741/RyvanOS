@@ -336,6 +336,11 @@ model Mission {
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
+  totalCostUsd  Float?    // accumulated LLM cost across all steps (USD)
+  inputTokens   Int?      // total input tokens across all LLM calls
+  outputTokens  Int?      // total output tokens across all LLM calls
+  durationMs    Int?      // wall-clock time from start to completion
+
   playbookName  String?   // which playbook this mission executes
   currentStage  String?   // current playbook stage id
   prospectId    String?   // prospect this mission targets
@@ -893,4 +898,23 @@ model GrowthActivity {
   user      User    @relation("GrowthActivityUser", fields: [userId], references: [id])
   metadata  String? // JSON
   createdAt DateTime @default(now())
+}
+
+// ─── Observability ──────────────────────────────────────────────
+
+model LlmUsageLog {
+  id            String   @id @default(cuid())
+  model         String
+  provider      String   @default("anthropic")
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  estimatedCost Float
+  latencyMs     Int
+  correlationId String?
+  source        String   // "assistant", "chat", "agent:<name>"
+  createdAt     DateTime @default(now())
+
+  @@index([correlationId])
+  @@index([createdAt])
 }
