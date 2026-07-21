@@ -238,6 +238,56 @@ const MISSION_TEMPLATES: Record<string, (config: Record<string, unknown>) => Mis
       approvalRequired: false,
     },
   ],
+
+  // ─── Company Intelligence Mission ────────────────────────────────
+  // Evidence Collectors → Synthesis → Inference → Report
+  // Each collector produces Evidence records. Synthesis converts to
+  // DiscoverySignals and triggers the existing intelligence pipeline.
+
+  company_intelligence: (config) => [
+    {
+      agentId: "website-collector",
+      title: "Collect Website Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName, website: config.website },
+      approvalRequired: false,
+    },
+    {
+      agentId: "technology-collector",
+      title: "Collect Technology Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName, website: config.website },
+      approvalRequired: false,
+    },
+    {
+      agentId: "hiring-collector",
+      title: "Collect Hiring Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName },
+      approvalRequired: false,
+    },
+    {
+      agentId: "news-collector",
+      title: "Collect News Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName },
+      approvalRequired: false,
+    },
+    {
+      agentId: "people-collector",
+      title: "Collect Decision Maker Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName, website: config.website },
+      approvalRequired: false,
+    },
+    {
+      agentId: "buying-signal-collector",
+      title: "Collect Buying Signal Evidence",
+      input: { prospectId: config.prospectId, companyName: config.companyName, industry: config.industry },
+      approvalRequired: false,
+    },
+    {
+      agentId: "evidence-synthesis",
+      title: "Synthesize Evidence → Intelligence Report",
+      input: { prospectId: config.prospectId },
+      approvalRequired: false,
+    },
+  ],
 };
 
 // ─── Orchestrator ───────────────────────────────────────────────
@@ -353,6 +403,10 @@ class OrchestratorImpl {
       {
         type: "opportunity_hunt",
         description: "Batch qualify companies and discover new opportunities",
+      },
+      {
+        type: "company_intelligence",
+        description: "Deep company research: 6 evidence collectors → inference → intelligence report",
       },
     ];
   }

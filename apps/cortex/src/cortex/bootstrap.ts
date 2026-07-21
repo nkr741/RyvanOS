@@ -6,6 +6,15 @@ import { CRMAgent } from "./agents/crm-agent";
 import { NotificationAgent } from "./agents/notification-agent";
 import { GrowthAgent } from "./agents/growth-agent";
 import { OutreachAgent } from "./agents/outreach-agent";
+import {
+  WebsiteCollector,
+  TechnologyCollector,
+  HiringCollector,
+  NewsCollector,
+  PeopleCollector,
+  BuyingSignalCollector,
+  EvidenceSynthesis,
+} from "./intelligence/company";
 import { bootstrapDiscovery } from "./discovery";
 import { bootstrapIntelligence } from "./intelligence";
 import { bootstrapExecution } from "./execution";
@@ -43,6 +52,15 @@ export function bootstrapCAO(): void {
   agentRegistry.register(new NotificationAgent());
   agentRegistry.register(new GrowthAgent());
   agentRegistry.register(new OutreachAgent());
+
+  // Company Intelligence Evidence Collectors
+  agentRegistry.register(new WebsiteCollector());
+  agentRegistry.register(new TechnologyCollector());
+  agentRegistry.register(new HiringCollector());
+  agentRegistry.register(new NewsCollector());
+  agentRegistry.register(new PeopleCollector());
+  agentRegistry.register(new BuyingSignalCollector());
+  agentRegistry.register(new EvidenceSynthesis());
 
   bootstrapDiscovery();
   bootstrapIntelligence();
