@@ -418,3 +418,160 @@ tools.register(myTool, myHandler);
 
 await platform.start();
 ```
+
+---
+
+## @ryvan/policy-engine
+
+**Purpose:** Decides whether an action may proceed — rules, spend budgets, and human approval gates. Called before anything consequential happens.
+
+> Not to be confused with `@ryvan/identity`. Identity answers *"who is this and what are they allowed to hold?"*. Policy answers *"may this action happen right now, and can we afford it?"*. Policy never stores users or roles; callers pass the roles identity already resolved.
+
+### Decision procedure
+
+Every matching enabled rule is collected, the highest `priority` wins, and ties within that priority go to the stronger effect — `deny` > `require_approval` > `allow`. A deny can never be silently outvoted by an allow written at the same level. When no rule matches, the configured `defaultEffect` applies (`allow` unless set).
+
+Budgets are a hard ceiling checked *before* rules: an exceeded budget denies regardless of what any rule says.
+
+```typescript
+const policy = platform.container.resolve<PolicyService>("policy");
+
+const decision = await policy.enforce({
+  action: "connector:sap:createInvoice",
+  resource: "connector:sap",
+  subject: { userId, orgId, roles: ["org:member"] },
+  estimatedCostUsd: 0.4,
+});
+
+if (decision.effect === "require_approval") {
+  // decision.approvalId is now pending a human
+}
+```
+
+### Key exports
+
+| Export | Description |
+|--------|-------------|
+| `PolicyService` | Facade — `enforce()`, `requestApproval()`, `grantApproval()`, `recordSpend()` |
+| `PolicyEngine` | Rule store and decision procedure |
+| `BudgetGuard` | Rolling-window spend ceilings by org/user/agent |
+| `ApprovalStore` | Approval lifecycle with TTL expiry |
+
+---
+
+## @ryvan/workflow-engine
+
+**Purpose:** Executes a step graph durably. This is what turns a plan into work actually being done.
+
+### Model
+
+Ordering comes from `dependsOn`, so **parallelism is a property of the graph**, not a step type — independent steps run concurrently up to `maxStepConcurrency`. Step kinds describe what a step *does*:
+
+| Kind | Behaviour |
+|------|-----------|
+| `action` | Invokes a registered handler |
+| `conditional` | Evaluates a predicate; skips all dependents when false |
+| `approval` | Suspends the run until an approval is decided |
+| `schedule` | Suspends until a delay elapses or an absolute time arrives |
+| `event` | Suspends until a named event fires on the bus |
+
+Retries, timeouts, and compensation are **modifiers** on a step (`retry`, `timeoutMs`, `compensate`), not kinds — because that is what they are.
+
+A run that suspends is persisted and returns; `resume()` picks it back up, so a run survives anything the store survives. When a step fails fatally, completed steps compensate in reverse completion order.
+
+```typescript
+const workflow = platform.container.resolve<WorkflowService>("workflow");
+
+workflow.registerHandler("charge", async (ctx) => {
+  return billing.charge(ctx.stepInput.amount, ctx.outputs.customer);
+});
+
+workflow.register({
+  id: "onboard", name: "Onboard customer", version: "1.0.0",
+  steps: [
+    { id: "customer", name: "Create", kind: "action", handler: "createCustomer" },
+    { id: "charge", name: "Charge", kind: "action", handler: "charge",
+      dependsOn: ["customer"], compensate: "refund",
+      retry: { maxAttempts: 3 }, timeoutMs: 10_000 },
+  ],
+});
+```
+
+> Step outputs are persisted, so they must be structured-cloneable.
+
+---
+
+## @ryvan/mission-engine
+
+**Purpose:** The unit of intent above a workflow. A mission is checked against policy, planned into a workflow, executed, and finalised — in that order, always.
+
+Products describe *what* they want done; the mission engine decides whether it may proceed and what carries it out.
+
+```typescript
+const mission = platform.container.resolve<MissionService>("mission");
+
+const run = await mission.launch({
+  type: "payroll.run",
+  goal: "Run July payroll",
+  input: { month: 7 },
+  subject: { userId, orgId, roles },
+  estimatedCostUsd: 12.5,
+});
+
+// run.status: "completed" | "running" | "awaiting_approval" | "failed"
+```
+
+Planning defaults to `TemplateMissionPlanner`, a deterministic mission-type → workflow mapping. That is intentional: most enterprise missions are known shapes, and a deterministic mapping is auditable. A product needing generated plans implements the `MissionPlanner` port instead.
+
+---
+
+## @ryvan/audit
+
+**Purpose:** Records what the platform did, in a form that stands up as evidence.
+
+Each entry commits to its predecessor's hash, so a single altered or removed record is detectable by `verify()`. That is what makes the log evidence rather than just history.
+
+The service **subscribes to the event bus** rather than requiring callers to log explicitly — an audit trail that depends on every author remembering to call it is one that has gaps.
+
+```typescript
+const audit = platform.container.resolve<AuditService>("audit");
+
+const entries = await audit.query({ orgId: "acme", since: Date.now() - 86_400_000 });
+const { valid, brokenAt } = await audit.verify();
+```
+
+A failing audit write never takes down the thing being audited.
+
+---
+
+## @ryvan/connector-sdk
+
+**Purpose:** One contract every external integration implements — Oracle, SAP, Workday, Slack, Stripe alike. Products call `execute()` and never learn which vendor is behind it.
+
+**This package ships no vendor implementations on purpose.** The contract is the reusable part; each vendor is a separate, small piece of work on top of it.
+
+```typescript
+class SalesforceConnector extends BaseConnector {
+  readonly id = "salesforce";
+  readonly vendor = "salesforce";
+  readonly version = "1.0.0";
+
+  protected operations() {
+    return [
+      { name: "getAccount" },
+      { name: "createOpportunity", mutates: true,
+        requiredPermission: "connector:salesforce:write" },
+    ];
+  }
+
+  protected async doConnect(config) { /* open the session */ }
+  protected async doExecute(operation, input) { /* one call */ }
+}
+
+await connectors.register(new SalesforceConnector(), config);
+const result = await connectors.execute("salesforce", "getAccount", { id });
+```
+
+`BaseConnector` handles connection state, operation validation, timeouts, latency measurement, retry classification, and turning a thrown error into a `ConnectorResult`. Subclasses supply three things: the operations they expose, how to connect, and how to perform one call.
+
+Operations marked `mutates: true` are checked against policy before the vendor is called — a denied write is never sent.

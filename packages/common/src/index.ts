@@ -87,14 +87,13 @@ export type {
   TenantContext,
 } from "./types.js";
 
+// The event bus contract (IEventBus, EventHandler, EventSubscription) is owned
+// by @ryvan/events — import it from there, not here. See interfaces.ts.
 export type {
   ILogger,
   LogEntry,
   IConfigManager,
   IServiceRegistry,
-  IEventBus,
-  EventHandler,
-  EventSubscription,
   IRepository,
   ICache,
   IHealthCheckable,

@@ -34,7 +34,18 @@ export enum AgentLifecycle {
   Shutdown = "shutdown",
 }
 
+/**
+ * Step vocabulary for `@ryvan/workflow-engine`.
+ *
+ * Only Action, Conditional, Approval, Schedule and Event are step *kinds* — a
+ * step's `kind` must be one of those. The remaining members describe ordering
+ * and error handling, which the engine models differently:
+ *   - Sequential / Parallel — expressed by a step's `dependsOn` edges
+ *   - Retry / Timeout       — per-step modifiers (`retry`, `timeoutMs`)
+ *   - Rollback / Compensation — a step's `compensate` handler, run in reverse
+ */
 export enum WorkflowStepType {
+  Action = "action",
   Sequential = "sequential",
   Parallel = "parallel",
   Conditional = "conditional",
@@ -102,6 +113,12 @@ export const EVENTS = {
   KERNEL_STOPPED: "kernel:stopped",
   KERNEL_ERROR: "kernel:error",
 
+  IDENTITY_USER_CREATED: "identity:user.created",
+  IDENTITY_USER_AUTHENTICATED: "identity:user.authenticated",
+  IDENTITY_AUTHORIZATION_DENIED: "identity:authorization.denied",
+  IDENTITY_ORG_CREATED: "identity:org.created",
+  IDENTITY_PROJECT_CREATED: "identity:project.created",
+
   SERVICE_REGISTERED: "service:registered",
   SERVICE_STARTED: "service:started",
   SERVICE_STOPPED: "service:stopped",
@@ -114,9 +131,13 @@ export const EVENTS = {
   TASK_FAILED: "task:failed",
   TASK_CANCELLED: "task:cancelled",
 
+  MISSION_CREATED: "mission:created",
+  MISSION_PLANNED: "mission:planned",
   MISSION_STARTED: "mission:started",
+  MISSION_AWAITING_APPROVAL: "mission:awaiting_approval",
   MISSION_COMPLETED: "mission:completed",
   MISSION_FAILED: "mission:failed",
+  MISSION_CANCELLED: "mission:cancelled",
 
   AGENT_INITIALIZED: "agent:initialized",
   AGENT_ASSIGNED: "agent:assigned",
@@ -136,23 +157,38 @@ export const EVENTS = {
   KNOWLEDGE_QUERIED: "knowledge:queried",
 
   WORKFLOW_STARTED: "workflow:started",
+  WORKFLOW_STEP_STARTED: "workflow:step:started",
   WORKFLOW_STEP_COMPLETED: "workflow:step:completed",
+  WORKFLOW_STEP_FAILED: "workflow:step:failed",
+  WORKFLOW_STEP_SKIPPED: "workflow:step:skipped",
+  WORKFLOW_SUSPENDED: "workflow:suspended",
+  WORKFLOW_RESUMED: "workflow:resumed",
+  WORKFLOW_COMPENSATED: "workflow:compensated",
   WORKFLOW_COMPLETED: "workflow:completed",
   WORKFLOW_FAILED: "workflow:failed",
+  WORKFLOW_CANCELLED: "workflow:cancelled",
 
   MODEL_CALLED: "model:called",
   MODEL_RESPONSE: "model:response",
   MODEL_ERROR: "model:error",
 
+  POLICY_EVALUATED: "policy:evaluated",
+  POLICY_DENIED: "policy:denied",
+
   APPROVAL_REQUESTED: "approval:requested",
   APPROVAL_GRANTED: "approval:granted",
   APPROVAL_DENIED: "approval:denied",
 
+  AUDIT_RECORDED: "audit:recorded",
+
   COST_THRESHOLD: "cost:threshold",
   COST_EXCEEDED: "cost:exceeded",
 
+  CONNECTOR_REGISTERED: "connector:registered",
   CONNECTOR_CONNECTED: "connector:connected",
   CONNECTOR_DISCONNECTED: "connector:disconnected",
+  CONNECTOR_EXECUTED: "connector:executed",
+  CONNECTOR_HEALTH_CHANGED: "connector:health_changed",
   CONNECTOR_ERROR: "connector:error",
 
   PLUGIN_INSTALLED: "plugin:installed",

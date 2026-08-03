@@ -43,20 +43,16 @@ export interface IServiceRegistry {
   names(): string[];
 }
 
-export interface IEventBus {
-  emit<T = unknown>(event: string, data: T): Promise<void>;
-  on<T = unknown>(event: string, handler: EventHandler<T>): EventSubscription;
-  once<T = unknown>(event: string, handler: EventHandler<T>): EventSubscription;
-  off(event: string, handler: EventHandler): void;
-  listenerCount(event: string): number;
-  removeAllListeners(event?: string): void;
-}
-
-export type EventHandler<T = unknown> = (data: T) => void | Promise<void>;
-
-export interface EventSubscription {
-  unsubscribe(): void;
-}
+/**
+ * The event bus contract lives in `@ryvan/events` — `IEventBus`, `EventHandler`,
+ * and `EventSubscription` are exported from there and are what every package
+ * imports. A second, incompatible copy used to sit here (its handlers took the
+ * payload where the real one passes a `RyvanEvent` envelope), which meant code
+ * typed against `@ryvan/common` could not accept the actual `EventBus`.
+ *
+ * `@ryvan/common` is a leaf package and cannot import `@ryvan/events`, so the
+ * declaration is not re-exported here. Import it from `@ryvan/events`.
+ */
 
 export interface IRepository<T> {
   findById(id: string): Promise<T | null>;

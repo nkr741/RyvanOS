@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check \"src/**/*.ts\""

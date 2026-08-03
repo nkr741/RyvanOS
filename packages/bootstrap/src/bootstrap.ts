@@ -1,22 +1,47 @@
-import { Container, Logger } from "@ryvan/common";
+import { Container, EVENTS, KernelStateError, Logger } from "@ryvan/common";
 import type { ILogger, Service } from "@ryvan/common";
 import { EventBus } from "@ryvan/events";
+import type { RyvanEvent } from "@ryvan/events";
 import { IdentityService } from "@ryvan/identity";
 import { ModelService } from "@ryvan/models";
 import { InMemoryBackend, MemoryManager } from "@ryvan/memory";
 import { ToolService } from "@ryvan/tool-registry";
 import { RuntimeService } from "@ryvan/agent-runtime";
 import { AgentService } from "@ryvan/agent-sdk";
+import { PolicyService } from "@ryvan/policy-engine";
+import { WorkflowService } from "@ryvan/workflow-engine";
+import { MissionService, TemplateMissionPlanner } from "@ryvan/mission-engine";
+import { AuditService } from "@ryvan/audit";
+import { ConnectorService } from "@ryvan/connector-sdk";
+import {
+  connectorPolicyGate,
+  missionPolicyGate,
+  policyApprovalGate,
+  workflowRunner,
+} from "./adapters.js";
 import type { Platform, PlatformConfig, PlatformStatus } from "./types.js";
 
+/**
+ * Start order follows the dependency direction: audit early so it captures the
+ * services that follow, and mission last because it drives everything below it.
+ * Shutdown is the reverse.
+ *
+ * `events` is deliberately absent — `EventBus` has no lifecycle and is live the
+ * moment it is constructed. Listing it here made `bootstrap()` throw on its
+ * first iteration.
+ */
 const SERVICE_START_ORDER = [
-  "events",
   "identity",
+  "policy",
+  "audit",
   "models",
   "memory",
   "tools",
+  "connectors",
+  "workflow",
   "agent-sdk",
   "agent-runtime",
+  "mission",
 ] as const;
 
 const SERVICE_STOP_ORDER = [...SERVICE_START_ORDER].reverse();
@@ -77,6 +102,55 @@ class RyvanPlatform implements Platform {
 
     const agentSdk = new AgentService();
 
+    const policy = new PolicyService({
+      defaultEffect: config.policy?.defaultEffect,
+      rules: config.policy?.rules,
+      budgets: config.policy?.budgets,
+      approvalTtlMs: config.policy?.approvalTtlMs,
+      logger: this.logger,
+      eventBus,
+    });
+
+    const audit = new AuditService({
+      store: config.audit?.store,
+      captureEvents: config.audit?.captureEvents,
+      logger: this.logger,
+      eventBus,
+    });
+
+    const connectors = new ConnectorService({
+      policy: connectorPolicyGate(policy),
+      healthIntervalMs: config.connectors?.healthIntervalMs,
+      logger: this.logger,
+      eventBus,
+    });
+
+    const workflow = new WorkflowService({
+      definitions: config.workflow?.definitions,
+      store: config.workflow?.store,
+      maxStepConcurrency: config.workflow?.maxStepConcurrency,
+      resumeIntervalMs: config.workflow?.resumeIntervalMs,
+      approvalGate: policyApprovalGate(policy),
+      logger: this.logger,
+      eventBus,
+    });
+
+    const mission = new MissionService({
+      planner:
+        config.mission?.planner ?? new TemplateMissionPlanner(config.mission?.templates ?? []),
+      store: config.mission?.store,
+      workflows: workflowRunner(workflow),
+      policy: missionPolicyGate(policy),
+      policyAction: config.mission?.policyAction,
+      approvalPollIntervalMs: config.mission?.approvalPollIntervalMs,
+      logger: this.logger,
+      eventBus,
+    });
+
+    if (config.policy?.trackModelSpend !== false) {
+      this.trackModelSpend(eventBus, policy);
+    }
+
     this.container.registerInstance("logger", this.logger);
     this.container.registerInstance("events", eventBus);
     this.container.registerInstance("identity", identity);
@@ -85,6 +159,29 @@ class RyvanPlatform implements Platform {
     this.container.registerInstance("tools", tools);
     this.container.registerInstance("agent-runtime", runtime);
     this.container.registerInstance("agent-sdk", agentSdk);
+    this.container.registerInstance("policy", policy);
+    this.container.registerInstance("audit", audit);
+    this.container.registerInstance("connectors", connectors);
+    this.container.registerInstance("workflow", workflow);
+    this.container.registerInstance("mission", mission);
+  }
+
+  /**
+   * Feeds model spend into the budget guard.
+   *
+   * Model events carry no tenant, so this records at global scope: a budget
+   * with an empty `scope` sees it, a per-org budget does not. Attributing spend
+   * per organisation needs tenant context on the model call itself.
+   */
+  private trackModelSpend(eventBus: EventBus, policy: PolicyService): void {
+    eventBus.on(EVENTS.MODEL_RESPONSE, (event: RyvanEvent) => {
+      const data = (event.data ?? {}) as { usage?: { estimatedCost?: number }; model?: string };
+      const cost = data.usage?.estimatedCost;
+
+      if (typeof cost === "number" && cost > 0) {
+        policy.recordSpend({}, cost, `model:${data.model ?? "unknown"}`);
+      }
+    });
   }
 
   async start(): Promise<void> {
@@ -94,6 +191,14 @@ class RyvanPlatform implements Platform {
 
     for (const name of SERVICE_START_ORDER) {
       const service = this.container.resolve<Service>(name);
+
+      if (typeof service?.start !== "function") {
+        throw new KernelStateError(
+          this._status,
+          `start "${name}" — it is registered but does not implement Service`,
+        );
+      }
+
       await service.start();
       this.logger.debug(`Service started: ${name}`);
     }

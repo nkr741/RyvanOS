@@ -28,7 +28,12 @@
     "@ryvan/memory": "workspace:*",
     "@ryvan/tool-registry": "workspace:*",
     "@ryvan/agent-runtime": "workspace:*",
-    "@ryvan/agent-sdk": "workspace:*"
+    "@ryvan/agent-sdk": "workspace:*",
+    "@ryvan/policy-engine": "workspace:*",
+    "@ryvan/workflow-engine": "workspace:*",
+    "@ryvan/mission-engine": "workspace:*",
+    "@ryvan/audit": "workspace:*",
+    "@ryvan/connector-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
