@@ -102,6 +102,44 @@ describe("AuditLedger", () => {
     expect((await ledger.verify()).valid).toBe(true);
   });
 
+  it("hashes independently of key order, so a store may reorder freely", () => {
+    // Postgres JSONB reorders object keys on write. If the hash depended on
+    // insertion order, every entry would fail verification after a round-trip.
+    const base = {
+      id: "aud_1",
+      sequence: 1,
+      timestamp: 1,
+      actor: { userId: "u1", orgId: "acme" },
+      action: "a",
+      outcome: "success" as const,
+      previousHash: "",
+      details: { zebra: 1, apple: { nested: true, another: 2 } },
+    };
+
+    const reordered = {
+      ...base,
+      actor: { orgId: "acme", userId: "u1" },
+      details: { apple: { another: 2, nested: true }, zebra: 1 },
+    };
+
+    expect(hashEntry(base)).toBe(hashEntry(reordered));
+  });
+
+  it("still distinguishes different array order", () => {
+    const base = {
+      id: "aud_1",
+      sequence: 1,
+      timestamp: 1,
+      actor: {},
+      action: "a",
+      outcome: "success" as const,
+      previousHash: "",
+      details: { steps: ["a", "b"] },
+    };
+
+    expect(hashEntry(base)).not.toBe(hashEntry({ ...base, details: { steps: ["b", "a"] } }));
+  });
+
   it("hashes deterministically", () => {
     const content = {
       id: "aud_1",

@@ -60,6 +60,23 @@ export interface PlatformConfig {
     healthIntervalMs?: number;
   };
 
+  /**
+   * Durable storage. Omit it entirely and the platform runs fully in memory,
+   * which is right for tests and wrong for production — nothing survives a
+   * restart. Supplying `postgresUrl` swaps every domain store for its durable
+   * equivalent without any other change.
+   */
+  storage?: {
+    /** postgres://user:pass@host:5432/db — enables durable workflow, mission, audit, and memory state. */
+    postgresUrl?: string;
+    /** redis://host:6379 — enables the shared key/value store for caches, locks, and counters. */
+    redisUrl?: string;
+    /** Table prefix, so environments can share a database. Default "ryvan". */
+    tablePrefix?: string;
+    /** Embedding width for the vector column. Must match your model. Default 1536. */
+    vectorDimensions?: number;
+  };
+
   logger?: ILogger;
 }
 

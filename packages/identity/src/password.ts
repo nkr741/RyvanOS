@@ -1,4 +1,7 @@
-import { hash, compare } from "bcryptjs";
+// bcryptjs v2 is CommonJS with only a default export — see api-keys.ts.
+import bcrypt from "bcryptjs";
+
+const { hash, compare } = bcrypt;
 import { ValidationError } from "@ryvan/common";
 
 const BCRYPT_COST = 12;

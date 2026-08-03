@@ -59,12 +59,20 @@ None of these have an implementation.
 5. ✅ `@ryvan/connector-sdk` — the connector contract and registry. 17 tests.
 6. ✅ Wired into `@ryvan/bootstrap` via ports, with 7 end-to-end tests.
 
-**Tier 2 — enterprise surface (next)**
+**Tier 2 — enterprise surface**
 
-7. `@ryvan/observability` — spans/traces over mission → agent → tool → model. `LogEntry` already carries `traceId`/`spanId` with nothing populating them.
-8. Persistence adapters — Postgres backends for identity, memory, audit, workflow, mission. **Everything is in-memory today; the platform loses all state on restart.** Each package already exposes a store port for exactly this.
-9. Tenant context on model calls — `ModelRouter` emits usage with no `orgId`, so budget enforcement can only work at global scope. Until this lands, per-organisation model ceilings are not possible.
-10. First connectors on the SDK — Slack, Jira, and one system of record.
+7. ✅ `@ryvan/storage` — `KeyValueStore`, `DocumentStore`, `ObjectStore`, `VectorStore`, `SqlClient` ports with in-memory, Postgres (+pgvector) and Redis drivers, plus a migration runner. 84 tests, 41 of them against live Postgres and Redis.
+8. ✅ `@ryvan/persistence` — durable `WorkflowStore`, `MissionStore`, `AuditStore`, and `IMemoryBackend`, written against the generic `DocumentStore` so the same class runs in-memory in tests and on Postgres in production. 20 tests.
+9. ✅ Bootstrap storage wiring — `storage.postgresUrl` is the single switch that makes everything durable. Verified by a restart test that boots, stops, and re-boots against the same database.
+10. `@ryvan/observability` — spans/traces over mission → agent → tool → model. `LogEntry` already carries `traceId`/`spanId` with nothing populating them. **Next.**
+11. Tenant context on model calls — `ModelRouter` emits usage with no `orgId`, so budget enforcement can only work at global scope. Until this lands, per-organisation model ceilings are not possible.
+12. First connectors on the SDK — Slack, Jira, and one system of record.
+
+### Known gaps in persistence
+
+- **Approvals are not durable.** `ApprovalStore` is in-memory, so a restart loses pending approvals and a workflow waiting on one resumes to `expired`. `ApprovalStore` needs the same `DocumentStore` treatment the other stores got. Covered by a test in `packages/bootstrap/src/durability.test.ts` that documents the behaviour rather than asserting it is correct.
+- **Identity is not durable.** Users, orgs, projects, and API keys are still in-memory maps.
+- **Document writes do not join an ambient transaction.** `PostgresDriver.transaction()` only enrols statements issued on the client it hands you; `put`/`get`/`find` run on the pool.
 
 **Tier 3 — after Tier 1 and 2 are stable**
 
@@ -79,6 +87,8 @@ Found and fixed while building Tier 1:
 - ✅ **`bootstrap()` never worked.** `EventBus` was listed in `SERVICE_START_ORDER` but has no lifecycle, so the first iteration threw `service.start is not a function`. No test existed to catch it. Removed from the order; `start()` now fails loudly and by name if a registered entry does not implement `Service`.
 - ✅ **Stale `tsconfig.tsbuildinfo` files were committed.** `tsc` read them, believed the output was current, and emitted no `dist/` — so a fresh clone could not build at all. Deleted and added to `.gitignore`.
 - ✅ **Duplicate `IEventBus`.** `common/interfaces.ts` declared one whose handlers took the payload, while the real one in `events/types.ts` passes a `RyvanEvent` envelope. Code typed against `common` could not accept the actual `EventBus`. Removed the duplicate — nothing imported it.
+- ✅ **The platform could not run under plain Node.** `@ryvan/identity` used named imports from `bcryptjs`, which is CommonJS: `import { hash, compare } from "bcryptjs"` throws `does not provide an export named 'compare'` in native ESM. Vitest's bundler papered over it, so every test passed while `node dist/index.js` failed instantly. Fixed by destructuring the default export.
+- ✅ **Audit hashes were not stable across storage.** `hashEntry` used `JSON.stringify`, which emits keys in insertion order. Postgres JSONB reorders keys on write, so every entry failed verification after a round-trip — a perfectly intact ledger reported as tampered. Hashing is now over a canonical serialisation with keys sorted at every depth (array order still significant). Found by the restart test, not by any unit test.
 
 Still open:
 

@@ -1,7 +1,7 @@
 {
-  "name": "@ryvan/bootstrap",
+  "name": "@ryvan/persistence",
   "version": "1.0.0",
-  "description": "Ryvan Platform - One-line platform initialization, service wiring, and graceful shutdown",
+  "description": "Ryvan Platform - Durable implementations of the domain store ports, backed by @ryvan/storage",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,20 +22,11 @@
   },
   "dependencies": {
     "@ryvan/common": "workspace:*",
-    "@ryvan/events": "workspace:*",
-    "@ryvan/identity": "workspace:*",
-    "@ryvan/models": "workspace:*",
-    "@ryvan/memory": "workspace:*",
-    "@ryvan/tool-registry": "workspace:*",
-    "@ryvan/agent-runtime": "workspace:*",
-    "@ryvan/agent-sdk": "workspace:*",
-    "@ryvan/policy-engine": "workspace:*",
+    "@ryvan/storage": "workspace:*",
     "@ryvan/workflow-engine": "workspace:*",
     "@ryvan/mission-engine": "workspace:*",
     "@ryvan/audit": "workspace:*",
-    "@ryvan/connector-sdk": "workspace:*",
-    "@ryvan/storage": "workspace:*",
-    "@ryvan/persistence": "workspace:*"
+    "@ryvan/memory": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -14,6 +14,21 @@ import { MissionService, TemplateMissionPlanner } from "@ryvan/mission-engine";
 import { AuditService } from "@ryvan/audit";
 import { ConnectorService } from "@ryvan/connector-sdk";
 import {
+  InMemoryDocumentStore,
+  InMemoryKeyValueStore,
+  InMemoryVectorStore,
+  PostgresDriver,
+  PostgresVectorStore,
+  RedisKeyValueStore,
+} from "@ryvan/storage";
+import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@ryvan/storage";
+import {
+  DocumentAuditStore,
+  DocumentMemoryBackend,
+  DocumentMissionStore,
+  DocumentWorkflowStore,
+} from "@ryvan/persistence";
+import {
   connectorPolicyGate,
   missionPolicyGate,
   policyApprovalGate,
@@ -50,6 +65,7 @@ class RyvanPlatform implements Platform {
   readonly container: Container;
   private _status: PlatformStatus = "created";
   private readonly logger: ILogger;
+  private readonly drivers: StorageDriver[] = [];
   private shutdownRegistered = false;
 
   constructor(config: PlatformConfig) {
@@ -65,6 +81,8 @@ class RyvanPlatform implements Platform {
       logger: this.logger,
       ...config.events,
     });
+
+    const storage = this.wireStorage(config);
 
     const identity = new IdentityService(
       {
@@ -84,7 +102,11 @@ class RyvanPlatform implements Platform {
     });
 
     const memory = new MemoryManager({
-      backend: new InMemoryBackend(),
+      // Durable when storage is configured; the package's own in-memory
+      // backend otherwise, so nothing is required to get started.
+      backend: storage.durable
+        ? new DocumentMemoryBackend(storage.documents, storage.vectors)
+        : new InMemoryBackend(),
       eventBus,
       logger: this.logger,
     });
@@ -112,7 +134,9 @@ class RyvanPlatform implements Platform {
     });
 
     const audit = new AuditService({
-      store: config.audit?.store,
+      store:
+        config.audit?.store ??
+        (storage.durable ? new DocumentAuditStore(storage.documents) : undefined),
       captureEvents: config.audit?.captureEvents,
       logger: this.logger,
       eventBus,
@@ -127,7 +151,9 @@ class RyvanPlatform implements Platform {
 
     const workflow = new WorkflowService({
       definitions: config.workflow?.definitions,
-      store: config.workflow?.store,
+      store:
+        config.workflow?.store ??
+        (storage.durable ? new DocumentWorkflowStore(storage.documents) : undefined),
       maxStepConcurrency: config.workflow?.maxStepConcurrency,
       resumeIntervalMs: config.workflow?.resumeIntervalMs,
       approvalGate: policyApprovalGate(policy),
@@ -138,7 +164,9 @@ class RyvanPlatform implements Platform {
     const mission = new MissionService({
       planner:
         config.mission?.planner ?? new TemplateMissionPlanner(config.mission?.templates ?? []),
-      store: config.mission?.store,
+      store:
+        config.mission?.store ??
+        (storage.durable ? new DocumentMissionStore(storage.documents) : undefined),
       workflows: workflowRunner(workflow),
       policy: missionPolicyGate(policy),
       policyAction: config.mission?.policyAction,
@@ -164,6 +192,69 @@ class RyvanPlatform implements Platform {
     this.container.registerInstance("connectors", connectors);
     this.container.registerInstance("workflow", workflow);
     this.container.registerInstance("mission", mission);
+    this.container.registerInstance("documents", storage.documents);
+    this.container.registerInstance("cache", storage.cache);
+    if (storage.vectors) {
+      this.container.registerInstance("vectors", storage.vectors);
+    }
+  }
+
+  /**
+   * Chooses storage drivers.
+   *
+   * With no `storage` config the platform runs entirely in memory — correct for
+   * tests, and a data-loss bug in production. Supplying `postgresUrl` is the
+   * single switch that makes workflow runs, missions, the audit ledger, and
+   * memory survive a restart; no other configuration changes.
+   */
+  private wireStorage(config: PlatformConfig): {
+    durable: boolean;
+    documents: DocumentStore;
+    cache: KeyValueStore;
+    vectors?: VectorStore;
+  } {
+    const postgresUrl = config.storage?.postgresUrl;
+    const redisUrl = config.storage?.redisUrl;
+
+    const cache = redisUrl
+      ? new RedisKeyValueStore({
+          url: redisUrl,
+          keyPrefix: config.storage?.tablePrefix ?? "ryvan",
+          logger: this.logger,
+        })
+      : new InMemoryKeyValueStore();
+
+    if (!postgresUrl) {
+      if (redisUrl) this.drivers.push(cache as unknown as StorageDriver);
+
+      this.logger.warn(
+        "No storage.postgresUrl configured — running in memory. State will not survive a restart.",
+      );
+
+      return {
+        durable: false,
+        documents: new InMemoryDocumentStore(),
+        cache,
+        vectors: new InMemoryVectorStore(),
+      };
+    }
+
+    const postgres = new PostgresDriver({
+      connectionString: postgresUrl,
+      tablePrefix: config.storage?.tablePrefix,
+      vectorDimensions: config.storage?.vectorDimensions,
+      logger: this.logger,
+    });
+
+    this.drivers.push(postgres);
+    if (redisUrl) this.drivers.push(cache as unknown as StorageDriver);
+
+    return {
+      durable: true,
+      documents: postgres,
+      cache,
+      vectors: new PostgresVectorStore(postgres),
+    };
   }
 
   /**
@@ -188,6 +279,12 @@ class RyvanPlatform implements Platform {
     if (this._status === "running") return;
     this._status = "starting";
     this.logger.info("Ryvan Platform starting");
+
+    // Storage comes up before any service, since services read from it as they start.
+    for (const driver of this.drivers) {
+      await driver.connect();
+      this.logger.debug(`Storage driver connected: ${driver.kind}`);
+    }
 
     for (const name of SERVICE_START_ORDER) {
       const service = this.container.resolve<Service>(name);
@@ -219,6 +316,17 @@ class RyvanPlatform implements Platform {
         this.logger.debug(`Service stopped: ${name}`);
       } catch (err) {
         this.logger.error(`Failed to stop ${name}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Storage goes down last, so a service can still flush state as it stops.
+    for (const driver of this.drivers) {
+      try {
+        await driver.disconnect();
+      } catch (err) {
+        this.logger.error(`Failed to disconnect ${driver.kind}`, {
           error: err instanceof Error ? err.message : String(err),
         });
       }

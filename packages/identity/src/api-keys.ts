@@ -1,4 +1,9 @@
-import { hash, compare } from "bcryptjs";
+// bcryptjs v2 is CommonJS with only a default export. Named imports work under
+// a bundler but throw at runtime in native ESM ("does not provide an export
+// named 'compare'"), so destructure the default instead.
+import bcrypt from "bcryptjs";
+
+const { hash, compare } = bcrypt;
 import { generateId, ValidationError } from "@ryvan/common";
 import type { APIKey } from "./types.js";
 
