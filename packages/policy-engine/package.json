@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/approval-conformance.d.ts",
+      "import": "./dist/approval-conformance.js"
     }
   },
   "scripts": {
@@ -23,6 +27,14 @@
   "dependencies": {
     "@ryvan/common": "workspace:*",
     "@ryvan/events": "workspace:*"
+  },
+  "peerDependencies": {
+    "vitest": "^2.1.0"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -485,12 +485,18 @@ importers:
       '@ryvan/common':
         specifier: workspace:*
         version: link:../common
+      '@ryvan/identity':
+        specifier: workspace:*
+        version: link:../identity
       '@ryvan/memory':
         specifier: workspace:*
         version: link:../memory
       '@ryvan/mission-engine':
         specifier: workspace:*
         version: link:../mission-engine
+      '@ryvan/policy-engine':
+        specifier: workspace:*
+        version: link:../policy-engine
       '@ryvan/storage':
         specifier: workspace:*
         version: link:../storage

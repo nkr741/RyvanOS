@@ -23,7 +23,9 @@ import {
 } from "@ryvan/storage";
 import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@ryvan/storage";
 import {
+  DocumentApprovalStore,
   DocumentAuditStore,
+  DocumentIdentityStore,
   DocumentMemoryBackend,
   DocumentMissionStore,
   DocumentWorkflowStore,
@@ -91,6 +93,7 @@ class RyvanPlatform implements Platform {
           expiresIn: config.identity.tokenExpiresIn ?? "24h",
           issuer: config.identity.tokenIssuer ?? "ryvan-platform",
         },
+        store: storage.durable ? new DocumentIdentityStore(storage.documents) : undefined,
       },
       eventBus,
     );
@@ -129,6 +132,9 @@ class RyvanPlatform implements Platform {
       rules: config.policy?.rules,
       budgets: config.policy?.budgets,
       approvalTtlMs: config.policy?.approvalTtlMs,
+      approvalStore: storage.durable
+        ? new DocumentApprovalStore(storage.documents, config.policy?.approvalTtlMs)
+        : undefined,
       logger: this.logger,
       eventBus,
     });

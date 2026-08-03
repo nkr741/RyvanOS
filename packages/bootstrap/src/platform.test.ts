@@ -104,7 +104,7 @@ describe("platform bootstrap", () => {
 
     expect(launched.status).toBe("running");
 
-    const pending = policy.approvals.pending();
+    const pending = await policy.approvals.pending();
     expect(pending).toHaveLength(1);
     expect(pending[0]?.reason).toBe("Payroll moves money");
 

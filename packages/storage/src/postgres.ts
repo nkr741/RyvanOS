@@ -71,6 +71,14 @@ export class PostgresDriver implements StorageDriver, SqlClient, DocumentStore {
   private readonly vectorDimensions: number;
   private readonly logger?: ILogger;
   private readonly ensured = new Set<string>();
+  /**
+   * DDL is serialised through this chain. Postgres has a well-known race where
+   * concurrent `CREATE TABLE IF NOT EXISTS` / `CREATE EXTENSION IF NOT EXISTS`
+   * statements fail with a duplicate key on `pg_type_typname_nsp_index` — the
+   * existence check and the insert are not atomic with respect to each other.
+   * Several services ensuring their collections at startup hits this reliably.
+   */
+  private ddl: Promise<unknown> = Promise.resolve();
 
   constructor(options: PostgresDriverOptions = {}) {
     this.options = options;
@@ -415,22 +423,60 @@ export class PostgresDriver implements StorageDriver, SqlClient, DocumentStore {
     return { clause: "WHERE payload @> $1::jsonb", params: [JSON.stringify(containment)] };
   }
 
+  /**
+   * Queues DDL behind any already in flight, and tolerates the race two callers
+   * can still lose against each other or against another process: if the object
+   * exists by the time we look, that is the outcome we wanted.
+   */
+  private async serializeDdl(run: () => Promise<void>): Promise<void> {
+    const next = this.ddl.then(
+      () => run().catch((err) => this.ignoreAlreadyExists(err)),
+      () => run().catch((err) => this.ignoreAlreadyExists(err)),
+    );
+
+    this.ddl = next.catch(() => undefined);
+    return next;
+  }
+
+  private ignoreAlreadyExists(err: unknown): void {
+    const code = (err as { code?: string })?.code;
+    const message = err instanceof Error ? err.message : String(err);
+
+    // 42P07 duplicate_table, 42710 duplicate_object, 23505 on a catalog index —
+    // all mean "someone else created it first", which is fine.
+    const benign =
+      code === "42P07" ||
+      code === "42710" ||
+      code === "23505" ||
+      message.includes("already exists") ||
+      message.includes("pg_type_typname_nsp_index");
+
+    if (!benign) throw err;
+
+    this.logger?.debug("Concurrent DDL lost a race; object already exists", { message });
+  }
+
   private async ensureCollection(collection: string): Promise<string> {
     const table = `${this.prefix}_${assertSafeIdentifier(collection, "collection")}`;
     if (this.ensured.has(table)) return table;
 
-    await this.query(`
-      CREATE TABLE IF NOT EXISTS ${table} (
-        id TEXT PRIMARY KEY,
-        payload JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.query(
-      `CREATE INDEX IF NOT EXISTS ${table}_payload_idx ON ${table} USING GIN (payload)`,
-    );
+    await this.serializeDdl(async () => {
+      if (this.ensured.has(table)) return;
 
-    this.ensured.add(table);
+      await this.query(`
+        CREATE TABLE IF NOT EXISTS ${table} (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.query(
+        `CREATE INDEX IF NOT EXISTS ${table}_payload_idx ON ${table} USING GIN (payload)`,
+      );
+
+      this.ensured.add(table);
+    });
+
     return table;
   }
 
@@ -438,20 +484,25 @@ export class PostgresDriver implements StorageDriver, SqlClient, DocumentStore {
     const table = `${this.prefix}_vec_${assertSafeIdentifier(namespace, "namespace")}`;
     if (this.ensured.has(table)) return table;
 
-    await this.query("CREATE EXTENSION IF NOT EXISTS vector");
-    await this.query(`
-      CREATE TABLE IF NOT EXISTS ${table} (
-        id TEXT PRIMARY KEY,
-        embedding vector(${this.vectorDimensions}) NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        content TEXT
-      )
-    `);
-    await this.query(
-      `CREATE INDEX IF NOT EXISTS ${table}_metadata_idx ON ${table} USING GIN (metadata)`,
-    );
+    await this.serializeDdl(async () => {
+      if (this.ensured.has(table)) return;
 
-    this.ensured.add(table);
+      await this.query("CREATE EXTENSION IF NOT EXISTS vector");
+      await this.query(`
+        CREATE TABLE IF NOT EXISTS ${table} (
+          id TEXT PRIMARY KEY,
+          embedding vector(${this.vectorDimensions}) NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          content TEXT
+        )
+      `);
+      await this.query(
+        `CREATE INDEX IF NOT EXISTS ${table}_metadata_idx ON ${table} USING GIN (metadata)`,
+      );
+
+      this.ensured.add(table);
+    });
+
     return table;
   }
 

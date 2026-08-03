@@ -11,11 +11,18 @@ import { RBACEngine } from "./rbac.js";
 import { TokenManager } from "./token.js";
 import type { TokenManagerConfig } from "./token.js";
 import { APIKeyManager } from "./api-keys.js";
+import { InMemoryIdentityStore, normalizeEmail } from "./identity-store.js";
+import type { IdentityStore } from "./identity-store.js";
 import { hashPassword, verifyPassword, validatePasswordStrength } from "./password.js";
 import type { User, Organization, Project, AuthResult, SafeUser } from "./types.js";
 
 export interface IdentityServiceConfig {
   token: TokenManagerConfig;
+  /**
+   * Where identity records live. Defaults to an in-memory store, which loses
+   * every user, organization and API key on restart.
+   */
+  store?: IdentityStore;
 }
 
 export class IdentityService implements Service {
@@ -25,22 +32,45 @@ export class IdentityService implements Service {
   readonly apiKeys: APIKeyManager;
 
   private currentStatus: Status = "stopped";
-  private users = new Map<string, User>();
-  private usersByEmail = new Map<string, string>();
-  private organizations = new Map<string, Organization>();
-  private projects = new Map<string, Project>();
+  private readonly store: IdentityStore;
   private eventBus?: EventBus;
 
   constructor(config: IdentityServiceConfig, eventBus?: EventBus) {
+    this.store = config.store ?? new InMemoryIdentityStore();
     this.rbac = new RBACEngine();
     this.tokens = new TokenManager(config.token);
-    this.apiKeys = new APIKeyManager();
+    this.apiKeys = new APIKeyManager(this.store);
     this.eventBus = eventBus;
   }
 
   async start(): Promise<void> {
     this.currentStatus = "starting";
+    await this.rehydrateRoles();
     this.currentStatus = "running";
+  }
+
+  /**
+   * Re-assigns every persisted user's roles into the RBAC engine.
+   *
+   * Role assignments live in memory inside `RBACEngine`, so without this a
+   * restart would leave persisted users authenticated but authorised for
+   * nothing. Roles are recovered from the user record, which is the durable
+   * source of truth.
+   *
+   * Custom roles registered with `rbac.defineRole()` are *not* recovered —
+   * callers must re-declare them on boot, the same way they declare workflows.
+   */
+  private async rehydrateRoles(): Promise<void> {
+    for (const user of await this.store.listUsers()) {
+      for (const roleId of user.roles) {
+        try {
+          this.rbac.assignRole(user.id, roleId, { orgId: user.organizationId });
+        } catch {
+          // A role the engine no longer knows about — skip it rather than
+          // refusing to start the whole platform over one stale assignment.
+        }
+      }
+    }
   }
 
   async stop(): Promise<void> {
@@ -81,11 +111,11 @@ export class IdentityService implements Service {
       throw new ValidationError("password", strength.errors.join("; "));
     }
 
-    if (!this.organizations.has(data.organizationId)) {
+    if (!(await this.store.getOrganization(data.organizationId))) {
       throw new NotFoundError("organization", data.organizationId);
     }
 
-    if (this.usersByEmail.has(normalizedEmail)) {
+    if (await this.store.getUserByEmail(normalizedEmail)) {
       throw new ConflictError("user", `email "${normalizedEmail}" already exists`);
     }
 
@@ -104,8 +134,7 @@ export class IdentityService implements Service {
       updatedAt: now,
     };
 
-    this.users.set(user.id, user);
-    this.usersByEmail.set(normalizedEmail, user.id);
+    await this.store.saveUser(user);
 
     this.rbac.assignRole(user.id, "org:member", { orgId: data.organizationId });
 
@@ -126,12 +155,7 @@ export class IdentityService implements Service {
       throw new ValidationError("password", "must not be empty");
     }
 
-    const userId = this.usersByEmail.get(email.trim().toLowerCase());
-    if (!userId) {
-      throw new AuthenticationError("invalid credentials");
-    }
-
-    const user = this.users.get(userId);
+    const user = await this.store.getUserByEmail(email);
     if (!user) {
       throw new AuthenticationError("invalid credentials");
     }
@@ -181,7 +205,7 @@ export class IdentityService implements Service {
       throw new AuthenticationError("invalid API key");
     }
 
-    const user = this.users.get(apiKey.userId);
+    const user = await this.store.getUser(apiKey.userId);
     if (!user) {
       throw new AuthenticationError("API key owner not found");
     }
@@ -232,22 +256,20 @@ export class IdentityService implements Service {
     return allowed;
   }
 
-  getUser(userId: string): User | undefined {
-    return this.users.get(userId);
+  async getUser(userId: string): Promise<User | undefined> {
+    return this.store.getUser(userId);
   }
 
-  getUserByEmail(email: string): User | undefined {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     if (!email) return undefined;
-    const userId = this.usersByEmail.get(email.trim().toLowerCase());
-    if (!userId) return undefined;
-    return this.users.get(userId);
+    return this.store.getUserByEmail(normalizeEmail(email));
   }
 
-  createOrganization(data: {
+  async createOrganization(data: {
     name: string;
     slug: string;
     plan?: "free" | "pro" | "enterprise";
-  }): Organization {
+  }): Promise<Organization> {
     if (!data.name) {
       throw new ValidationError("name", "must not be empty");
     }
@@ -255,10 +277,8 @@ export class IdentityService implements Service {
       throw new ValidationError("slug", "must not be empty");
     }
 
-    for (const org of this.organizations.values()) {
-      if (org.slug === data.slug) {
-        throw new ConflictError("organization", `slug "${data.slug}" already exists`);
-      }
+    if (await this.store.getOrganizationBySlug(data.slug)) {
+      throw new ConflictError("organization", `slug "${data.slug}" already exists`);
     }
 
     const now = Date.now();
@@ -272,16 +292,20 @@ export class IdentityService implements Service {
       updatedAt: now,
     };
 
-    this.organizations.set(org.id, org);
-    void this.emit("identity:org.created", { orgId: org.id, name: org.name, slug: org.slug });
+    await this.store.saveOrganization(org);
+    await this.emit("identity:org.created", { orgId: org.id, name: org.name, slug: org.slug });
     return org;
   }
 
-  getOrganization(orgId: string): Organization | undefined {
-    return this.organizations.get(orgId);
+  async getOrganization(orgId: string): Promise<Organization | undefined> {
+    return this.store.getOrganization(orgId);
   }
 
-  createProject(data: { name: string; organizationId: string; description?: string }): Project {
+  async createProject(data: {
+    name: string;
+    organizationId: string;
+    description?: string;
+  }): Promise<Project> {
     if (!data.name) {
       throw new ValidationError("name", "must not be empty");
     }
@@ -289,7 +313,7 @@ export class IdentityService implements Service {
       throw new ValidationError("organizationId", "must not be empty");
     }
 
-    if (!this.organizations.has(data.organizationId)) {
+    if (!(await this.store.getOrganization(data.organizationId))) {
       throw new NotFoundError("organization", data.organizationId);
     }
 
@@ -304,8 +328,8 @@ export class IdentityService implements Service {
       updatedAt: now,
     };
 
-    this.projects.set(project.id, project);
-    void this.emit("identity:project.created", {
+    await this.store.saveProject(project);
+    await this.emit("identity:project.created", {
       projectId: project.id,
       name: project.name,
       organizationId: project.organizationId,
@@ -313,8 +337,8 @@ export class IdentityService implements Service {
     return project;
   }
 
-  getProject(projectId: string): Project | undefined {
-    return this.projects.get(projectId);
+  async getProject(projectId: string): Promise<Project | undefined> {
+    return this.store.getProject(projectId);
   }
 
   private toSafeUser(user: User): SafeUser {

@@ -135,6 +135,11 @@ export interface PolicyServiceOptions extends PolicyEngineOptions {
   budgets?: BudgetLimit[];
   /** How long a raised approval stays pending before expiring. Default 24h. */
   approvalTtlMs?: number;
+  /**
+   * Where approvals live. Defaults to an in-memory store, which loses pending
+   * approvals on restart — supply a durable one for production.
+   */
+  approvalStore?: import("./approvals.js").ApprovalStore;
   logger?: import("@ryvan/common").ILogger;
   eventBus?: import("@ryvan/events").IEventBus;
 }

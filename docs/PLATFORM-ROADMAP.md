@@ -68,11 +68,27 @@ None of these have an implementation.
 11. Tenant context on model calls — `ModelRouter` emits usage with no `orgId`, so budget enforcement can only work at global scope. Until this lands, per-organisation model ceilings are not possible.
 12. First connectors on the SDK — Slack, Jira, and one system of record.
 
-### Known gaps in persistence
+### Persistence coverage
 
-- **Approvals are not durable.** `ApprovalStore` is in-memory, so a restart loses pending approvals and a workflow waiting on one resumes to `expired`. `ApprovalStore` needs the same `DocumentStore` treatment the other stores got. Covered by a test in `packages/bootstrap/src/durability.test.ts` that documents the behaviour rather than asserting it is correct.
-- **Identity is not durable.** Users, orgs, projects, and API keys are still in-memory maps.
+Everything that carries state across a restart is now durable:
+
+| State | Store | Verified by |
+|-------|-------|-------------|
+| Workflow runs | `DocumentWorkflowStore` | A suspended run resumes in a fresh process |
+| Missions | `DocumentMissionStore` | Mission recovered and completed after restart |
+| Audit ledger | `DocumentAuditStore` | Chain verifies and continues from the recovered tail |
+| Memory | `DocumentMemoryBackend` | With optional vector-ranked recall |
+| **Approvals** | `DocumentApprovalStore` | Pending approval survives, is granted in the second process, and releases the workflow |
+| **Identity** | `DocumentIdentityStore` | Users, orgs, projects and API keys recovered; password and API-key auth still work; roles rehydrated |
+
+Both `ApprovalStore` and `IdentityStore` are async ports — a synchronous one
+would have had to be redesigned the moment it needed to outlive the process.
+
+### Remaining gaps
+
+- **Custom RBAC roles are not persisted.** `IdentityService.start()` rehydrates each user's role *assignments* from their stored record, but roles registered with `rbac.defineRole()` must be re-declared on boot, the same way workflow definitions are.
 - **Document writes do not join an ambient transaction.** `PostgresDriver.transaction()` only enrols statements issued on the client it hands you; `put`/`get`/`find` run on the pool.
+- **Object storage has no S3 driver.** The `ObjectStore` port and its in-memory driver exist; nothing implements it against S3 yet.
 
 **Tier 3 — after Tier 1 and 2 are stable**
 

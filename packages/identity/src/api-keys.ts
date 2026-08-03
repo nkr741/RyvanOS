@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 
 const { hash, compare } = bcrypt;
 import { generateId, ValidationError } from "@ryvan/common";
+import { InMemoryIdentityStore } from "./identity-store.js";
+import type { IdentityStore } from "./identity-store.js";
 import type { APIKey } from "./types.js";
 
 const BCRYPT_COST = 12;
@@ -29,8 +31,11 @@ function generateRandomString(length: number): string {
 }
 
 export class APIKeyManager {
-  private keys = new Map<string, APIKey>();
-  private keysByPrefix = new Map<string, string>();
+  private readonly store: IdentityStore;
+
+  constructor(store: IdentityStore = new InMemoryIdentityStore()) {
+    this.store = store;
+  }
 
   async generate(
     userId: string,
@@ -70,8 +75,7 @@ export class APIKeyManager {
       createdAt: Date.now(),
     };
 
-    this.keys.set(apiKey.id, apiKey);
-    this.keysByPrefix.set(prefix, apiKey.id);
+    await this.store.saveApiKey(apiKey);
 
     return { apiKey, rawKey };
   }
@@ -82,11 +86,7 @@ export class APIKeyManager {
     const parts = rawKey.slice(KEY_NAMESPACE.length).split("_");
     if (parts.length !== 2) return null;
 
-    const prefix = parts[0];
-    const keyId = this.keysByPrefix.get(prefix);
-    if (!keyId) return null;
-
-    const apiKey = this.keys.get(keyId);
+    const apiKey = await this.store.getApiKeyByPrefix(parts[0]!);
     if (!apiKey) return null;
 
     if (apiKey.expiresAt && apiKey.expiresAt < Date.now()) {
@@ -97,40 +97,28 @@ export class APIKeyManager {
     if (!matches) return null;
 
     const updated: APIKey = { ...apiKey, lastUsedAt: Date.now() };
-    this.keys.set(keyId, updated);
+    await this.store.saveApiKey(updated);
     return updated;
   }
 
-  revoke(keyId: string): boolean {
+  async revoke(keyId: string): Promise<boolean> {
     if (!keyId) {
       throw new ValidationError("keyId", "must not be empty");
     }
-    const apiKey = this.keys.get(keyId);
-    if (apiKey) {
-      this.keysByPrefix.delete(apiKey.prefix);
-    }
-    return this.keys.delete(keyId);
+    return this.store.deleteApiKey(keyId);
   }
 
-  listByUser(userId: string): APIKey[] {
+  async listByUser(userId: string): Promise<APIKey[]> {
     if (!userId) {
       throw new ValidationError("userId", "must not be empty");
     }
-    const result: APIKey[] = [];
-    for (const key of this.keys.values()) {
-      if (key.userId === userId) result.push(key);
-    }
-    return result;
+    return this.store.listApiKeysByUser(userId);
   }
 
-  listByOrg(orgId: string): APIKey[] {
+  async listByOrg(orgId: string): Promise<APIKey[]> {
     if (!orgId) {
       throw new ValidationError("orgId", "must not be empty");
     }
-    const result: APIKey[] = [];
-    for (const key of this.keys.values()) {
-      if (key.organizationId === orgId) result.push(key);
-    }
-    return result;
+    return this.store.listApiKeysByOrg(orgId);
   }
 }

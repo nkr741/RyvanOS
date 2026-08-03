@@ -157,6 +157,12 @@ export class AuditService implements Service {
   }
 
   private async capture(type: string, event: RyvanEvent): Promise<void> {
+    // An event handler can still be in flight when the service stops, and by
+    // the time it lands the storage driver may be disconnected. Dropping it is
+    // correct: shutdown already unsubscribed, so this event is past the ledger's
+    // lifetime.
+    if (this.state !== "running") return;
+
     try {
       const data = (event.data ?? {}) as Record<string, unknown>;
       const input = this.mapper(type, data, event.correlationId);

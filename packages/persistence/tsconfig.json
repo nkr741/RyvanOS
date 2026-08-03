@@ -12,6 +12,8 @@
     { "path": "../workflow-engine" },
     { "path": "../mission-engine" },
     { "path": "../audit" },
-    { "path": "../memory" }
+    { "path": "../memory" },
+    { "path": "../policy-engine" },
+    { "path": "../identity" }
   ]
 }

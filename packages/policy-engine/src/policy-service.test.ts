@@ -68,7 +68,7 @@ describe("PolicyService", () => {
     expect(decision.effect).toBe("require_approval");
     expect(decision.allowed).toBe(false);
     expect(decision.approvalId).toBeDefined();
-    expect(service.approvals.pending()).toHaveLength(1);
+    expect(await service.approvals.pending()).toHaveLength(1);
     expect(emitted(eventBus, EVENTS.APPROVAL_REQUESTED)).toHaveLength(1);
   });
 
@@ -136,7 +136,7 @@ describe("PolicyService", () => {
 
     expect(decision.effect).toBe("deny");
     expect(decision.approvalId).toBeUndefined();
-    expect(service.approvals.pending()).toHaveLength(0);
+    expect(await service.approvals.pending()).toHaveLength(0);
   });
 
   it("works without an event bus", async () => {

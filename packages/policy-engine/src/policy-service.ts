@@ -1,8 +1,8 @@
 import { EVENTS } from "@ryvan/common";
 import type { ILogger, Service, Status } from "@ryvan/common";
 import type { IEventBus } from "@ryvan/events";
-import { ApprovalStore } from "./approvals.js";
-import type { RaiseApprovalInput } from "./approvals.js";
+import { InMemoryApprovalStore } from "./approvals.js";
+import type { ApprovalStore, RaiseApprovalInput } from "./approvals.js";
 import { BudgetGuard } from "./budget-guard.js";
 import { PolicyEngine } from "./policy-engine.js";
 import type {
@@ -44,7 +44,8 @@ export class PolicyService implements Service {
       rules: options.rules,
     });
     this.budgets = new BudgetGuard(options.budgets);
-    this.approvals = new ApprovalStore(options.approvalTtlMs);
+    // Durable when bootstrap supplies one; process-local otherwise.
+    this.approvals = options.approvalStore ?? new InMemoryApprovalStore(options.approvalTtlMs);
   }
 
   async start(): Promise<void> {
@@ -112,7 +113,7 @@ export class PolicyService implements Service {
     const decision = this.engine.evaluate(request);
 
     if (decision.effect === "require_approval") {
-      const approval = this.approvals.raise({
+      const approval = await this.approvals.raise({
         action: request.action,
         resource: request.resource,
         subject: request.subject,
@@ -138,7 +139,7 @@ export class PolicyService implements Service {
    * Goes through the service rather than the store so the event still fires.
    */
   async requestApproval(input: RaiseApprovalInput): Promise<ApprovalRequest> {
-    const approval = this.approvals.raise(input);
+    const approval = await this.approvals.raise(input);
     await this.emit(EVENTS.APPROVAL_REQUESTED, { approval });
     this.logger?.info("Approval requested", {
       approvalId: approval.id,
@@ -148,8 +149,8 @@ export class PolicyService implements Service {
   }
 
   /** Current status of an approval. Unknown ids read as "expired", never as granted. */
-  approvalStatus(approvalId: string): ApprovalStatus {
-    return this.approvals.get(approvalId)?.status ?? "expired";
+  async approvalStatus(approvalId: string): Promise<ApprovalStatus> {
+    return (await this.approvals.get(approvalId))?.status ?? "expired";
   }
 
   async grantApproval(
@@ -157,7 +158,7 @@ export class PolicyService implements Service {
     decidedBy: string,
     note?: string,
   ): Promise<ApprovalRequest> {
-    const approval = this.approvals.grant(approvalId, decidedBy, note);
+    const approval = await this.approvals.grant(approvalId, decidedBy, note);
     await this.emit(EVENTS.APPROVAL_GRANTED, { approval });
     this.logger?.info("Approval granted", { approvalId, decidedBy });
     return approval;
@@ -168,7 +169,7 @@ export class PolicyService implements Service {
     decidedBy: string,
     note?: string,
   ): Promise<ApprovalRequest> {
-    const approval = this.approvals.deny(approvalId, decidedBy, note);
+    const approval = await this.approvals.deny(approvalId, decidedBy, note);
     await this.emit(EVENTS.APPROVAL_DENIED, { approval });
     this.logger?.info("Approval denied", { approvalId, decidedBy });
     return approval;
@@ -180,7 +181,7 @@ export class PolicyService implements Service {
   }
 
   private async sweepApprovals(): Promise<void> {
-    for (const approval of this.approvals.expireStale()) {
+    for (const approval of await this.approvals.expireStale()) {
       await this.emit(EVENTS.APPROVAL_DENIED, { approval, reason: "expired" });
       this.logger?.warn("Approval expired", { approvalId: approval.id });
     }

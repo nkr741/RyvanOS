@@ -1,4 +1,5 @@
 import type { AuditService } from "@ryvan/audit";
+import type { IdentityService } from "@ryvan/identity";
 import type { MissionService } from "@ryvan/mission-engine";
 import type { PolicyService } from "@ryvan/policy-engine";
 import type { WorkflowDefinition, WorkflowService } from "@ryvan/workflow-engine";
@@ -68,7 +69,7 @@ async function boot(prefix: string) {
 }
 
 describe.skipIf(!POSTGRES_URL)("durability across a restart", () => {
-  it("resumes a suspended mission in a fresh process", async () => {
+  it("resumes a suspended mission, and finishes it, in a fresh process", async () => {
     const prefix = `d${Date.now().toString(36)}`;
 
     // --- first "process" ---
@@ -81,7 +82,7 @@ describe.skipIf(!POSTGRES_URL)("durability across a restart", () => {
     });
 
     expect(launched.status).toBe("running");
-    const approvalId = first.policy.approvals.pending()[0]!.id;
+    const approvalId = (await first.policy.approvals.pending())[0]!.id;
 
     await first.platform.stop();
 
@@ -98,12 +99,54 @@ describe.skipIf(!POSTGRES_URL)("durability across a restart", () => {
     expect(run!.steps["collect"]!.status).toBe("completed");
     expect(run!.outputs.collect).toEqual({ employees: 42 });
 
-    // Approvals live in the policy service, which is still in memory — so the
-    // second process re-grants by id. This is the remaining gap: approval state
-    // is not yet durable. See PLATFORM-ROADMAP.md.
-    expect(second.policy.approvals.pending()).toHaveLength(0);
-    expect(approvalId).toBeDefined();
-  });
+    // The approval survived too, and is still the same request. Before it was
+    // durable this came back empty and the workflow resumed straight to
+    // "expired" — a deploy silently turned "waiting for the CFO" into a denial.
+    const pending = await second.policy.approvals.pending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.id).toBe(approvalId);
+    expect(pending[0]!.reason).toBe("Payroll moves money");
+
+    // Granting in the second process releases the run the first process started.
+    await second.policy.grantApproval(approvalId, "u-cfo");
+    await second.workflow.tick();
+
+    const finished = await second.mission.get(launched.id);
+    expect(finished!.status).toBe("completed");
+    expect(finished!.result).toMatchObject({ pay: { paid: 42 } });
+  }, 30_000);
+
+  it("recovers users, roles, and API keys in a fresh process", async () => {
+    const prefix = `d${Date.now().toString(36)}i`;
+
+    const first = await boot(prefix);
+    const identity = first.platform.container.resolve<IdentityService>("identity");
+
+    const org = await identity.createOrganization({ name: "Acme", slug: "acme" });
+    const user = await identity.createUser({
+      email: "person@example.com",
+      name: "Person",
+      password: "Str0ng!Passw0rd",
+      organizationId: org.id,
+    });
+    const { rawKey } = await identity.apiKeys.generate(user.id, org.id, "CI", ["project:read"]);
+
+    await first.platform.stop();
+
+    const second = await boot(prefix);
+    const recovered = second.platform.container.resolve<IdentityService>("identity");
+
+    // The account still exists and the password still works.
+    const auth = await recovered.authenticateWithPassword("person@example.com", "Str0ng!Passw0rd");
+    expect(auth.user.id).toBe(user.id);
+
+    // Roles were rehydrated, so the user is still authorised — not merely
+    // authenticated and permitted nothing.
+    expect(recovered.authorize(user.id, "project:read", { orgId: org.id })).toBe(true);
+
+    // The API key issued before the restart is still valid.
+    expect((await recovered.authenticateWithAPIKey(rawKey)).user.id).toBe(user.id);
+  }, 30_000);
 
   it("keeps the audit chain intact and verifiable across a restart", async () => {
     const prefix = `d${Date.now().toString(36)}a`;

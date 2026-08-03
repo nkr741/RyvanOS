@@ -13,12 +13,90 @@ export interface RaiseApprovalInput {
 }
 
 /**
- * Tracks human-in-the-loop approval gates.
+ * Where pending approvals live.
  *
- * Storage is in-memory and process-local. A Postgres-backed store will
- * implement the same surface when persistence lands (see PLATFORM-ROADMAP.md).
+ * Every method is async because any real implementation talks to a database —
+ * a synchronous port would have to be redesigned the moment approvals needed to
+ * outlive the process, and an approval that does not survive a restart silently
+ * turns into a denial.
+ *
+ * `@ryvan/persistence` supplies the durable implementation.
  */
-export class ApprovalStore {
+export interface ApprovalStore {
+  raise(input: RaiseApprovalInput): Promise<ApprovalRequest>;
+  get(approvalId: string): Promise<ApprovalRequest | undefined>;
+  grant(approvalId: string, decidedBy: string, note?: string): Promise<ApprovalRequest>;
+  deny(approvalId: string, decidedBy: string, note?: string): Promise<ApprovalRequest>;
+  list(status?: ApprovalStatus): Promise<ApprovalRequest[]>;
+  pending(): Promise<ApprovalRequest[]>;
+  /** Sweeps lapsed requests, returning those that transitioned on this call. */
+  expireStale(): Promise<ApprovalRequest[]>;
+}
+
+/** Builds the record for a new approval. Shared by every implementation. */
+export function buildApproval(input: RaiseApprovalInput, defaultTtlMs: number): ApprovalRequest {
+  if (!input.action) {
+    throw new ValidationError("action", "must not be empty");
+  }
+  if (!input.reason) {
+    throw new ValidationError("reason", "must not be empty");
+  }
+
+  const now = Date.now();
+
+  return {
+    id: generateId("appr"),
+    action: input.action,
+    resource: input.resource,
+    subject: input.subject,
+    reason: input.reason,
+    status: "pending",
+    requestedAt: now,
+    expiresAt: now + (input.ttlMs ?? defaultTtlMs),
+    metadata: input.metadata,
+  };
+}
+
+/**
+ * Applies a decision, refusing to overwrite one already made. Returns the
+ * updated record; the caller persists it.
+ */
+export function decideApproval(
+  request: ApprovalRequest,
+  status: "granted" | "denied",
+  decidedBy: string,
+  note?: string,
+): ApprovalRequest {
+  if (!decidedBy) {
+    throw new ValidationError("decidedBy", "must not be empty");
+  }
+  if (request.status !== "pending") {
+    throw new ConflictError("ApprovalRequest", `already ${request.status}`);
+  }
+
+  return {
+    ...request,
+    status,
+    decidedAt: Date.now(),
+    decidedBy,
+    decisionNote: note,
+  };
+}
+
+/** Marks a lapsed request expired. Returns undefined when it has not lapsed. */
+export function expireIfLapsed(
+  request: ApprovalRequest,
+  now = Date.now(),
+): ApprovalRequest | undefined {
+  if (request.status !== "pending" || now < request.expiresAt) return undefined;
+  return { ...request, status: "expired", decidedAt: now };
+}
+
+/**
+ * Process-local approval store. Correct for tests and for a single-process
+ * deployment that can afford to lose pending approvals on restart.
+ */
+export class InMemoryApprovalStore implements ApprovalStore {
   private readonly requests = new Map<string, ApprovalRequest>();
   private readonly defaultTtlMs: number;
 
@@ -26,103 +104,77 @@ export class ApprovalStore {
     this.defaultTtlMs = defaultTtlMs;
   }
 
-  raise(input: RaiseApprovalInput): ApprovalRequest {
-    if (!input.action) {
-      throw new ValidationError("action", "must not be empty");
-    }
-    if (!input.reason) {
-      throw new ValidationError("reason", "must not be empty");
-    }
-
-    const now = Date.now();
-    const request: ApprovalRequest = {
-      id: generateId("appr"),
-      action: input.action,
-      resource: input.resource,
-      subject: input.subject,
-      reason: input.reason,
-      status: "pending",
-      requestedAt: now,
-      expiresAt: now + (input.ttlMs ?? this.defaultTtlMs),
-      metadata: input.metadata,
-    };
-
+  async raise(input: RaiseApprovalInput): Promise<ApprovalRequest> {
+    const request = buildApproval(input, this.defaultTtlMs);
     this.requests.set(request.id, request);
     return request;
   }
 
   /** Reads a request, lazily transitioning it to "expired" when its TTL has passed. */
-  get(approvalId: string): ApprovalRequest | undefined {
+  async get(approvalId: string): Promise<ApprovalRequest | undefined> {
     const request = this.requests.get(approvalId);
     if (!request) return undefined;
 
-    if (request.status === "pending" && Date.now() >= request.expiresAt) {
-      request.status = "expired";
-      request.decidedAt = Date.now();
+    const expired = expireIfLapsed(request);
+    if (expired) {
+      this.requests.set(approvalId, expired);
+      return expired;
     }
 
     return request;
   }
 
-  grant(approvalId: string, decidedBy: string, note?: string): ApprovalRequest {
+  async grant(approvalId: string, decidedBy: string, note?: string): Promise<ApprovalRequest> {
     return this.decide(approvalId, "granted", decidedBy, note);
   }
 
-  deny(approvalId: string, decidedBy: string, note?: string): ApprovalRequest {
+  async deny(approvalId: string, decidedBy: string, note?: string): Promise<ApprovalRequest> {
     return this.decide(approvalId, "denied", decidedBy, note);
   }
 
-  list(status?: ApprovalStatus): ApprovalRequest[] {
-    const all = Array.from(this.requests.keys())
-      .map((id) => this.get(id))
-      .filter((request): request is ApprovalRequest => request !== undefined);
+  async list(status?: ApprovalStatus): Promise<ApprovalRequest[]> {
+    const all: ApprovalRequest[] = [];
+
+    for (const id of Array.from(this.requests.keys())) {
+      const request = await this.get(id);
+      if (request) all.push(request);
+    }
 
     return status ? all.filter((request) => request.status === status) : all;
   }
 
-  pending(): ApprovalRequest[] {
+  async pending(): Promise<ApprovalRequest[]> {
     return this.list("pending");
   }
 
-  /** Sweeps expired requests and returns those that transitioned on this call. */
-  expireStale(): ApprovalRequest[] {
-    const now = Date.now();
+  async expireStale(): Promise<ApprovalRequest[]> {
     const expired: ApprovalRequest[] = [];
 
-    for (const request of this.requests.values()) {
-      if (request.status === "pending" && now >= request.expiresAt) {
-        request.status = "expired";
-        request.decidedAt = now;
-        expired.push(request);
+    for (const request of Array.from(this.requests.values())) {
+      const lapsed = expireIfLapsed(request);
+      if (lapsed) {
+        this.requests.set(lapsed.id, lapsed);
+        expired.push(lapsed);
       }
     }
 
     return expired;
   }
 
-  private decide(
+  private async decide(
     approvalId: string,
     status: "granted" | "denied",
     decidedBy: string,
     note?: string,
-  ): ApprovalRequest {
-    if (!decidedBy) {
-      throw new ValidationError("decidedBy", "must not be empty");
-    }
-
-    const request = this.get(approvalId);
+  ): Promise<ApprovalRequest> {
+    const request = await this.get(approvalId);
     if (!request) {
       throw new NotFoundError("ApprovalRequest", approvalId);
     }
-    if (request.status !== "pending") {
-      throw new ConflictError("ApprovalRequest", `already ${request.status}`);
-    }
 
-    request.status = status;
-    request.decidedAt = Date.now();
-    request.decidedBy = decidedBy;
-    request.decisionNote = note;
+    const decided = decideApproval(request, status, decidedBy, note);
+    this.requests.set(approvalId, decided);
 
-    return request;
+    return decided;
   }
 }
