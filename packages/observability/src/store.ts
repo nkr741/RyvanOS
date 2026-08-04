@@ -1,4 +1,4 @@
-import { deepClone } from "@ryvan/common";
+import { applyRange, deepClone } from "@ryvan/common";
 import type { Span, TraceFilter, TraceStore } from "./types.js";
 
 /** Process-local span storage, indexed by trace so timeline reads stay cheap. */
@@ -48,18 +48,9 @@ export class InMemoryTraceStore implements TraceStore {
     if (filter?.status) {
       spans = spans.filter((span) => span.status === filter.status);
     }
-    if (filter?.since !== undefined) {
-      spans = spans.filter((span) => span.startedAt >= filter.since!);
-    }
-    if (filter?.until !== undefined) {
-      spans = spans.filter((span) => span.startedAt <= filter.until!);
-    }
-
     spans = spans.sort((a, b) => a.startedAt - b.startedAt);
 
-    if (filter?.limit !== undefined && spans.length > filter.limit) {
-      spans = spans.slice(-filter.limit);
-    }
+    spans = applyRange(spans, filter, (span) => span.startedAt);
 
     return spans.map((span) => deepClone(span));
   }

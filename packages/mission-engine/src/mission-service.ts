@@ -1,6 +1,7 @@
 import { EVENTS, NotFoundError, ValidationError, generateId } from "@ryvan/common";
 import type { ILogger, Service, Status } from "@ryvan/common";
-import type { EventSubscription, IEventBus, RyvanEvent } from "@ryvan/events";
+import { scopedEmitter } from "@ryvan/events";
+import type { EventSubscription, IEventBus, RyvanEvent, ScopedEmitter } from "@ryvan/events";
 import { InMemoryMissionStore } from "./store.js";
 import { TemplateMissionPlanner } from "./planner.js";
 import type {
@@ -49,6 +50,7 @@ export class MissionService implements Service {
   private readonly approvalPollIntervalMs: number;
   private readonly logger?: ILogger;
   private readonly eventBus?: IEventBus;
+  private readonly publish: ScopedEmitter;
   private readonly subscriptions: EventSubscription[] = [];
   private timer?: ReturnType<typeof setInterval>;
 
@@ -61,6 +63,7 @@ export class MissionService implements Service {
     this.approvalPollIntervalMs = options.approvalPollIntervalMs ?? DEFAULT_APPROVAL_POLL_MS;
     this.logger = options.logger;
     this.eventBus = options.eventBus;
+    this.publish = scopedEmitter("mission", options.eventBus);
   }
 
   async start(): Promise<void> {
@@ -375,12 +378,15 @@ export class MissionService implements Service {
     return mission;
   }
 
+  /**
+   * Emits with the mission stamped on it and its correlation id attached, so
+   * every event is attributable and lands in the mission's trace.
+   */
   private async emit(type: string, mission: Mission, data: Record<string, unknown>): Promise<void> {
-    if (!this.eventBus) return;
-    await this.eventBus.emit(
+    await this.publish(
       type,
       { ...data, missionId: mission.id, status: mission.status },
-      { source: this.name, correlationId: mission.correlationId },
+      { correlationId: mission.correlationId },
     );
   }
 }

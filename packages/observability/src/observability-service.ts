@@ -2,13 +2,7 @@ import { EVENTS } from "@ryvan/common";
 import type { ILogger, Service, Status } from "@ryvan/common";
 import type { EventSubscription, IEventBus, RyvanEvent } from "@ryvan/events";
 import { Tracer } from "./tracer.js";
-import type {
-  ObservabilityServiceOptions,
-  Span,
-  SpanNode,
-  Trace,
-  TraceFilter,
-} from "./types.js";
+import type { ObservabilityServiceOptions, Span, SpanNode, Trace, TraceFilter } from "./types.js";
 
 type Data = Record<string, unknown>;
 
@@ -59,7 +53,9 @@ export class ObservabilityService implements Service {
       this.subscribe(EVENTS.MISSION_CREATED, (data, event) => this.onMissionStart(data, event));
       this.subscribe(EVENTS.MISSION_COMPLETED, (data, e) => this.onMissionEnd(data, e, "ok"));
       this.subscribe(EVENTS.MISSION_FAILED, (data, e) => this.onMissionEnd(data, e, "error"));
-      this.subscribe(EVENTS.MISSION_CANCELLED, (data, e) => this.onMissionEnd(data, e, "cancelled"));
+      this.subscribe(EVENTS.MISSION_CANCELLED, (data, e) =>
+        this.onMissionEnd(data, e, "cancelled"),
+      );
       this.subscribe(EVENTS.MISSION_AWAITING_APPROVAL, (data, e) =>
         this.note(e, `mission:${str(data, "missionId")}`, "awaiting_approval", data),
       );
@@ -194,7 +190,11 @@ export class ObservabilityService implements Service {
     });
   }
 
-  private async onWorkflowEnd(data: Data, event: RyvanEvent, status: Span["status"]): Promise<void> {
+  private async onWorkflowEnd(
+    data: Data,
+    event: RyvanEvent,
+    status: Span["status"],
+  ): Promise<void> {
     const traceId = this.traceIdOf(event, data);
     if (!traceId) return;
 
@@ -292,10 +292,7 @@ export class ObservabilityService implements Service {
 
   // --- helpers --------------------------------------------------------------
 
-  private subscribe(
-    type: string,
-    handler: (data: Data, event: RyvanEvent) => Promise<void>,
-  ): void {
+  private subscribe(type: string, handler: (data: Data, event: RyvanEvent) => Promise<void>): void {
     if (!this.eventBus) return;
 
     this.subscriptions.push(

@@ -1,4 +1,4 @@
-import { deepClone } from "@ryvan/common";
+import { applyRange, deepClone } from "@ryvan/common";
 import type { AuditEntry, AuditFilter, AuditStore } from "./types.js";
 
 /** Process-local ledger storage, ordered by sequence. */
@@ -35,18 +35,9 @@ export class InMemoryAuditStore implements AuditStore {
     if (filter?.outcome) {
       results = results.filter((entry) => entry.outcome === filter.outcome);
     }
-    if (filter?.since !== undefined) {
-      results = results.filter((entry) => entry.timestamp >= filter.since!);
-    }
-    if (filter?.until !== undefined) {
-      results = results.filter((entry) => entry.timestamp <= filter.until!);
-    }
-
-    // `limit` keeps the most recent entries, but the chain is always returned
-    // in sequence order so `verify()` can walk it.
-    if (filter?.limit !== undefined && results.length > filter.limit) {
-      results = results.slice(-filter.limit);
-    }
+    // Time window and cap. `limit` keeps the most recent entries while the
+    // chain stays in sequence order, so `verify()` can still walk it.
+    results = applyRange(results, filter, (entry) => entry.timestamp);
 
     return results.map((entry) => deepClone(entry));
   }

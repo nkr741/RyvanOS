@@ -1,4 +1,4 @@
-import { ValidationError } from "@ryvan/common";
+import { ValidationError, expandPaths } from "@ryvan/common";
 import type { ILogger } from "@ryvan/common";
 import type {
   DocumentFilter,
@@ -400,27 +400,13 @@ export class PostgresDriver implements StorageDriver, SqlClient, DocumentStore {
       return { clause: "", params: [] };
     }
 
-    // `@>` containment matches nested shapes too, so a dotted key is expanded
-    // into the nested object it describes.
-    const containment: Record<string, unknown> = {};
-
-    for (const [key, value] of Object.entries(where)) {
-      if (!key.includes(".")) {
-        containment[key] = value;
-        continue;
-      }
-
-      const parts = key.split(".");
-      let cursor = containment;
-      for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i]!;
-        cursor[part] ??= {};
-        cursor = cursor[part] as Record<string, unknown>;
-      }
-      cursor[parts[parts.length - 1]!] = value;
-    }
-
-    return { clause: "WHERE payload @> $1::jsonb", params: [JSON.stringify(containment)] };
+    // `@>` containment matches nested shapes too, so dotted keys are expanded
+    // into the nested objects they describe. Shared with the in-memory driver's
+    // path resolution so both agree on what "subject.orgId" means.
+    return {
+      clause: "WHERE payload @> $1::jsonb",
+      params: [JSON.stringify(expandPaths(where))],
+    };
   }
 
   /**

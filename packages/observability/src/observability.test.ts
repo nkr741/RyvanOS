@@ -199,11 +199,7 @@ describe("ObservabilityService", () => {
       { runId: "r1", stepId: "collect", stepName: "Collect", kind: "action" },
       opts,
     );
-    await eventBus.emit(
-      EVENTS.WORKFLOW_STEP_COMPLETED,
-      { runId: "r1", stepId: "collect" },
-      opts,
-    );
+    await eventBus.emit(EVENTS.WORKFLOW_STEP_COMPLETED, { runId: "r1", stepId: "collect" }, opts);
     await eventBus.emit(EVENTS.WORKFLOW_COMPLETED, { runId: "r1", missionId: "m1" }, opts);
     await eventBus.emit(EVENTS.MISSION_COMPLETED, { missionId: "m1" }, opts);
 
@@ -238,10 +234,7 @@ describe("ObservabilityService", () => {
     expect(trace!.totalTokens).toBe(1200);
 
     // The model call nests under the mission, not beside it.
-    expect(paths(await service.tree(TRACE))).toEqual([
-      "mission:ask",
-      "mission:ask > model:haiku",
-    ]);
+    expect(paths(await service.tree(TRACE))).toEqual(["mission:ask", "mission:ask > model:haiku"]);
   });
 
   it("nests a tool call under the step that was open when it ran", async () => {
@@ -375,9 +368,13 @@ describe("ObservabilityService", () => {
     const { eventBus, service } = await setup();
 
     await service.stop();
-    await eventBus.emit(EVENTS.MISSION_CREATED, { missionId: "m1", type: "a" }, {
-      correlationId: TRACE,
-    });
+    await eventBus.emit(
+      EVENTS.MISSION_CREATED,
+      { missionId: "m1", type: "a" },
+      {
+        correlationId: TRACE,
+      },
+    );
 
     expect(await service.spans(TRACE)).toHaveLength(0);
   });

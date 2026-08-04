@@ -1,6 +1,7 @@
 import { EVENTS, NotFoundError, ValidationError } from "@ryvan/common";
 import type { ILogger, Service, Status } from "@ryvan/common";
-import type { IEventBus } from "@ryvan/events";
+import { scopedEmitter } from "@ryvan/events";
+import type { ScopedEmitter } from "@ryvan/events";
 import type {
   Connector,
   ConnectorCallContext,
@@ -34,14 +35,14 @@ export class ConnectorService implements Service {
   private readonly policy?: ConnectorPolicyGate;
   private readonly healthIntervalMs: number;
   private readonly logger?: ILogger;
-  private readonly eventBus?: IEventBus;
+  private readonly emitEvent: ScopedEmitter;
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(options: ConnectorServiceOptions = {}) {
     this.policy = options.policy;
     this.healthIntervalMs = options.healthIntervalMs ?? DEFAULT_HEALTH_INTERVAL_MS;
     this.logger = options.logger;
-    this.eventBus = options.eventBus;
+    this.emitEvent = scopedEmitter("connectors", options.eventBus);
   }
 
   async start(): Promise<void> {
@@ -65,7 +66,7 @@ export class ConnectorService implements Service {
     for (const registration of this.registrations.values()) {
       try {
         await registration.connector.disconnect();
-        await this.emit(EVENTS.CONNECTOR_DISCONNECTED, {
+        await this.emitEvent(EVENTS.CONNECTOR_DISCONNECTED, {
           connectorId: registration.connector.id,
         });
       } catch (err) {
@@ -103,12 +104,12 @@ export class ConnectorService implements Service {
       registeredAt: Date.now(),
     });
 
-    await this.emit(EVENTS.CONNECTOR_REGISTERED, {
+    await this.emitEvent(EVENTS.CONNECTOR_REGISTERED, {
       connectorId: connector.id,
       vendor: connector.vendor,
       version: connector.version,
     });
-    await this.emit(EVENTS.CONNECTOR_CONNECTED, { connectorId: connector.id });
+    await this.emitEvent(EVENTS.CONNECTOR_CONNECTED, { connectorId: connector.id });
 
     this.logger?.info("Connector registered", {
       connectorId: connector.id,
@@ -122,7 +123,7 @@ export class ConnectorService implements Service {
 
     await registration.connector.disconnect();
     this.registrations.delete(connectorId);
-    await this.emit(EVENTS.CONNECTOR_DISCONNECTED, { connectorId });
+    await this.emitEvent(EVENTS.CONNECTOR_DISCONNECTED, { connectorId });
   }
 
   get(connectorId: string): Connector {
@@ -178,7 +179,7 @@ export class ConnectorService implements Service {
       });
 
       if (!verdict.allowed) {
-        await this.emit(EVENTS.CONNECTOR_ERROR, {
+        await this.emitEvent(EVENTS.CONNECTOR_ERROR, {
           connectorId,
           operation: operationName,
           error: verdict.reason,
@@ -197,7 +198,7 @@ export class ConnectorService implements Service {
 
     const result = await connector.execute<T>(operationName, input, context);
 
-    await this.emit(
+    await this.emitEvent(
       result.success ? EVENTS.CONNECTOR_EXECUTED : EVENTS.CONNECTOR_ERROR,
       {
         connectorId,
@@ -209,7 +210,7 @@ export class ConnectorService implements Service {
         runId: context?.runId,
         subject: context?.subject,
       },
-      context?.correlationId,
+      { correlationId: context?.correlationId },
     );
 
     return result;
@@ -235,7 +236,7 @@ export class ConnectorService implements Service {
       results[registration.connector.id] = registration.health;
 
       if (registration.health.status !== previous) {
-        await this.emit(EVENTS.CONNECTOR_HEALTH_CHANGED, {
+        await this.emitEvent(EVENTS.CONNECTOR_HEALTH_CHANGED, {
           connectorId: registration.connector.id,
           from: previous,
           to: registration.health.status,
@@ -250,14 +251,5 @@ export class ConnectorService implements Service {
     }
 
     return results;
-  }
-
-  private async emit(
-    type: string,
-    data: Record<string, unknown>,
-    correlationId?: string,
-  ): Promise<void> {
-    if (!this.eventBus) return;
-    await this.eventBus.emit(type, data, { source: this.name, correlationId });
   }
 }

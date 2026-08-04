@@ -1,4 +1,4 @@
-import { ValidationError, deepClone } from "@ryvan/common";
+import { ValidationError, deepClone, globToRegExp, matchesWhere } from "@ryvan/common";
 import { cosineSimilarity } from "./similarity.js";
 import type {
   DocumentFilter,
@@ -14,12 +14,6 @@ import type {
   VectorRecord,
   VectorStore,
 } from "./types.js";
-
-/** Translates a glob (`*` only) into an anchored RegExp. */
-function globToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}$`);
-}
 
 interface Expiring<T> {
   value: T;
@@ -209,25 +203,6 @@ function compareValues(left: unknown, right: unknown): number {
   const a = String(left);
   const b = String(right);
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function matchesWhere(document: unknown, where: Record<string, unknown>): boolean {
-  const record = document as Record<string, unknown>;
-
-  for (const [key, expected] of Object.entries(where)) {
-    // Dotted paths let callers filter on nested fields, e.g. "subject.orgId".
-    const actual = key.includes(".")
-      ? key.split(".").reduce<unknown>((value, part) => {
-          return value && typeof value === "object"
-            ? (value as Record<string, unknown>)[part]
-            : undefined;
-        }, record)
-      : record[key];
-
-    if (actual !== expected) return false;
-  }
-
-  return true;
 }
 
 /** In-memory object store. */

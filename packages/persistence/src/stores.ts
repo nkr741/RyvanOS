@@ -1,3 +1,4 @@
+import { applyRange } from "@ryvan/common";
 import type { DocumentStore } from "@ryvan/storage";
 import type { WorkflowRun, WorkflowRunStatus, WorkflowStore } from "@ryvan/workflow-engine";
 import type { Mission, MissionStatus, MissionStore } from "@ryvan/mission-engine";
@@ -125,20 +126,10 @@ export class DocumentAuditStore implements AuditStore {
       direction: "asc",
     });
 
-    // Time bounds are ranges, which the document port only expresses as
-    // equality, so they are applied here.
-    if (filter?.since !== undefined) {
-      entries = entries.filter((entry) => entry.timestamp >= filter.since!);
-    }
-    if (filter?.until !== undefined) {
-      entries = entries.filter((entry) => entry.timestamp <= filter.until!);
-    }
-
-    // `limit` keeps the most recent entries but preserves ascending order, so
-    // the chain stays walkable.
-    if (filter?.limit !== undefined && entries.length > filter.limit) {
-      entries = entries.slice(-filter.limit);
-    }
+    // Time bounds are ranges, which the document port expresses only as
+    // equality. `limit` keeps the most recent entries but preserves ascending
+    // order, so the hash chain stays walkable.
+    entries = applyRange(entries, filter, (entry) => entry.timestamp);
 
     return entries;
   }

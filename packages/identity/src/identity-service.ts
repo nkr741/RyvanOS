@@ -6,7 +6,8 @@ import {
   ConflictError,
 } from "@ryvan/common";
 import type { Status, Service } from "@ryvan/common";
-import type { EventBus } from "@ryvan/events";
+import { scopedEmitter } from "@ryvan/events";
+import type { EventBus, ScopedEmitter } from "@ryvan/events";
 import { RBACEngine } from "./rbac.js";
 import { TokenManager } from "./token.js";
 import type { TokenManagerConfig } from "./token.js";
@@ -33,14 +34,14 @@ export class IdentityService implements Service {
 
   private currentStatus: Status = "stopped";
   private readonly store: IdentityStore;
-  private eventBus?: EventBus;
+  private readonly emit: ScopedEmitter;
 
   constructor(config: IdentityServiceConfig, eventBus?: EventBus) {
     this.store = config.store ?? new InMemoryIdentityStore();
     this.rbac = new RBACEngine();
     this.tokens = new TokenManager(config.token);
     this.apiKeys = new APIKeyManager(this.store);
-    this.eventBus = eventBus;
+    this.emit = scopedEmitter("identity", eventBus);
   }
 
   async start(): Promise<void> {
@@ -347,11 +348,5 @@ export class IdentityService implements Service {
       if (key !== "passwordHash") safeUser[key] = value;
     }
     return safeUser as SafeUser;
-  }
-
-  private async emit(type: string, data: Record<string, unknown>): Promise<void> {
-    if (this.eventBus) {
-      await this.eventBus.emit(type, data, { source: this.name });
-    }
   }
 }

@@ -27,7 +27,10 @@ export class Tracer {
   private readonly openByKey = new Map<string, string>();
   private readonly spanCountByTrace = new Map<string, number>();
 
-  constructor(store: TraceStore = new InMemoryTraceStore(), maxSpansPerTrace = DEFAULT_MAX_SPANS_PER_TRACE) {
+  constructor(
+    store: TraceStore = new InMemoryTraceStore(),
+    maxSpansPerTrace = DEFAULT_MAX_SPANS_PER_TRACE,
+  ) {
     this.store = store;
     this.maxSpansPerTrace = maxSpansPerTrace;
   }
@@ -116,7 +119,8 @@ export class Tracer {
   ): Promise<Span | undefined> {
     const endedAt = options.endedAt ?? Date.now();
     const startedAt =
-      options.startedAt ?? (options.durationMs !== undefined ? endedAt - options.durationMs : endedAt);
+      options.startedAt ??
+      (options.durationMs !== undefined ? endedAt - options.durationMs : endedAt);
 
     const span = await this.startSpan({ ...options, startedAt });
     if (!span) return undefined;

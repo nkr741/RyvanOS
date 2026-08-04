@@ -40,6 +40,16 @@ export {
 } from "./utils.js";
 
 export {
+  globToRegExp,
+  matchesGlob,
+  getByPath,
+  expandPaths,
+  matchesWhere,
+  applyRange,
+} from "./matching.js";
+export type { RangeOptions } from "./matching.js";
+
+export {
   IdSchema,
   NameSchema,
   EmailSchema,

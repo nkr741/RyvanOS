@@ -1,6 +1,7 @@
 import { EVENTS } from "@ryvan/common";
 import type { ILogger, Service, Status } from "@ryvan/common";
-import type { IEventBus } from "@ryvan/events";
+import { scopedEmitter } from "@ryvan/events";
+import type { ScopedEmitter } from "@ryvan/events";
 import { InMemoryApprovalStore } from "./approvals.js";
 import type { ApprovalStore, RaiseApprovalInput } from "./approvals.js";
 import { BudgetGuard } from "./budget-guard.js";
@@ -32,12 +33,12 @@ export class PolicyService implements Service {
 
   private state: Status = "stopped";
   private readonly logger?: ILogger;
-  private readonly eventBus?: IEventBus;
+  private readonly emit: ScopedEmitter;
   private sweepTimer?: ReturnType<typeof setInterval>;
 
   constructor(options: PolicyServiceOptions = {}) {
     this.logger = options.logger;
-    this.eventBus = options.eventBus;
+    this.emit = scopedEmitter("policy", options.eventBus);
 
     this.engine = new PolicyEngine({
       defaultEffect: options.defaultEffect,
@@ -207,10 +208,5 @@ export class PolicyService implements Service {
         reason: decision.reason,
       });
     }
-  }
-
-  private async emit(type: string, data: Record<string, unknown>): Promise<void> {
-    if (!this.eventBus) return;
-    await this.eventBus.emit(type, data, { source: this.name });
   }
 }

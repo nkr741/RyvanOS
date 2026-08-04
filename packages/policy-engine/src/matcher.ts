@@ -1,19 +1,9 @@
+import { globToRegExp, matchesGlob } from "@ryvan/common";
 import type { PolicyCondition, PolicyRequest } from "./types.js";
 
-const REGEX_SPECIALS = /[.+?^${}()|[\]\\]/g;
-
-/**
- * Converts a glob pattern into an anchored RegExp. Only `*` is special —
- * it matches any run of characters, including none.
- */
-export function globToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(REGEX_SPECIALS, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}$`);
-}
-
-export function matchesGlob(value: string, patterns: string[]): boolean {
-  return patterns.some((pattern) => globToRegExp(pattern).test(value));
-}
+// Glob semantics live in @ryvan/common so policy rules ("tool:*") and storage
+// keyspaces ("session:*") cannot drift apart on an edge case.
+export { globToRegExp, matchesGlob };
 
 /**
  * Evaluates a condition against a request. Every populated field must match;

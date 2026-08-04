@@ -1,3 +1,4 @@
+import { applyRange } from "@ryvan/common";
 import type { DocumentStore } from "@ryvan/storage";
 import type { Span, TraceFilter, TraceStore } from "@ryvan/observability";
 
@@ -44,16 +45,7 @@ export class DocumentTraceStore implements TraceStore {
     });
 
     // Time bounds are ranges, which the document port expresses only as equality.
-    if (filter?.since !== undefined) {
-      spans = spans.filter((span) => span.startedAt >= filter.since!);
-    }
-    if (filter?.until !== undefined) {
-      spans = spans.filter((span) => span.startedAt <= filter.until!);
-    }
-
-    if (filter?.limit !== undefined && spans.length > filter.limit) {
-      spans = spans.slice(-filter.limit);
-    }
+    spans = applyRange(spans, filter, (span) => span.startedAt);
 
     return spans;
   }
