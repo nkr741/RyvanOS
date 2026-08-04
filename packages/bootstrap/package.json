@@ -35,7 +35,8 @@
     "@ryvan/audit": "workspace:*",
     "@ryvan/connector-sdk": "workspace:*",
     "@ryvan/storage": "workspace:*",
-    "@ryvan/persistence": "workspace:*"
+    "@ryvan/persistence": "workspace:*",
+    "@ryvan/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

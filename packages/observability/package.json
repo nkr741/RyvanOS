@@ -1,7 +1,7 @@
 {
-  "name": "@ryvan/persistence",
+  "name": "@ryvan/observability",
   "version": "1.0.0",
-  "description": "Ryvan Platform - Durable implementations of the domain store ports, backed by @ryvan/storage",
+  "description": "Ryvan Platform - Distributed tracing: spans across mission, workflow, agent, tool, model, and connector",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,14 +22,7 @@
   },
   "dependencies": {
     "@ryvan/common": "workspace:*",
-    "@ryvan/storage": "workspace:*",
-    "@ryvan/workflow-engine": "workspace:*",
-    "@ryvan/mission-engine": "workspace:*",
-    "@ryvan/audit": "workspace:*",
-    "@ryvan/memory": "workspace:*",
-    "@ryvan/policy-engine": "workspace:*",
-    "@ryvan/identity": "workspace:*",
-    "@ryvan/observability": "workspace:*"
+    "@ryvan/events": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

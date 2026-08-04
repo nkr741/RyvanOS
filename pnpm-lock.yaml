@@ -279,6 +279,9 @@ importers:
       '@ryvan/models':
         specifier: workspace:*
         version: link:../models
+      '@ryvan/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@ryvan/persistence':
         specifier: workspace:*
         version: link:../persistence
@@ -477,6 +480,28 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
 
+  packages/observability:
+    dependencies:
+      '@ryvan/common':
+        specifier: workspace:*
+        version: link:../common
+      '@ryvan/events':
+        specifier: workspace:*
+        version: link:../events
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
+
   packages/persistence:
     dependencies:
       '@ryvan/audit':
@@ -494,6 +519,9 @@ importers:
       '@ryvan/mission-engine':
         specifier: workspace:*
         version: link:../mission-engine
+      '@ryvan/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@ryvan/policy-engine':
         specifier: workspace:*
         version: link:../policy-engine

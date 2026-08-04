@@ -64,7 +64,7 @@ None of these have an implementation.
 7. ✅ `@ryvan/storage` — `KeyValueStore`, `DocumentStore`, `ObjectStore`, `VectorStore`, `SqlClient` ports with in-memory, Postgres (+pgvector) and Redis drivers, plus a migration runner. 84 tests, 41 of them against live Postgres and Redis.
 8. ✅ `@ryvan/persistence` — durable `WorkflowStore`, `MissionStore`, `AuditStore`, and `IMemoryBackend`, written against the generic `DocumentStore` so the same class runs in-memory in tests and on Postgres in production. 20 tests.
 9. ✅ Bootstrap storage wiring — `storage.postgresUrl` is the single switch that makes everything durable. Verified by a restart test that boots, stops, and re-boots against the same database.
-10. `@ryvan/observability` — spans/traces over mission → agent → tool → model. `LogEntry` already carries `traceId`/`spanId` with nothing populating them. **Next.**
+10. ✅ `@ryvan/observability` — spans over mission → workflow → step → tool → model → connector, assembled from events the services already emit. 23 tests.
 11. Tenant context on model calls — `ModelRouter` emits usage with no `orgId`, so budget enforcement can only work at global scope. Until this lands, per-organisation model ceilings are not possible.
 12. First connectors on the SDK — Slack, Jira, and one system of record.
 

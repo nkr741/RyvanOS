@@ -73,9 +73,13 @@ export class MissionService implements Service {
         EVENTS.WORKFLOW_CANCELLED,
       ]) {
         this.subscriptions.push(
-          this.eventBus.on(type, (event: RyvanEvent) => {
-            void this.onWorkflowFinished(event.data as WorkflowFinishedEvent);
-          }),
+          // The promise is returned, not discarded: the bus awaits handlers, so
+          // a workflow's completion is fully applied to its mission before the
+          // emit resolves. Fire-and-forget here left a race where a caller could
+          // observe a finished run whose mission was still "running".
+          this.eventBus.on(type, (event: RyvanEvent) =>
+            this.onWorkflowFinished(event.data as WorkflowFinishedEvent),
+          ),
         );
       }
     }

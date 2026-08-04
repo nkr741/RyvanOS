@@ -22,12 +22,14 @@ import {
   RedisKeyValueStore,
 } from "@ryvan/storage";
 import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@ryvan/storage";
+import { ObservabilityService } from "@ryvan/observability";
 import {
   DocumentApprovalStore,
   DocumentAuditStore,
   DocumentIdentityStore,
   DocumentMemoryBackend,
   DocumentMissionStore,
+  DocumentTraceStore,
   DocumentWorkflowStore,
 } from "@ryvan/persistence";
 import {
@@ -50,6 +52,7 @@ import type { Platform, PlatformConfig, PlatformStatus } from "./types.js";
 const SERVICE_START_ORDER = [
   "identity",
   "policy",
+  "observability",
   "audit",
   "models",
   "memory",
@@ -148,6 +151,15 @@ class RyvanPlatform implements Platform {
       eventBus,
     });
 
+    // Starts before the services it observes, so no span is missed. It only
+    // subscribes to the bus, so it cannot break what it is watching.
+    const observability = new ObservabilityService({
+      store: storage.durable ? new DocumentTraceStore(storage.documents) : undefined,
+      maxSpansPerTrace: config.observability?.maxSpansPerTrace,
+      logger: this.logger,
+      eventBus,
+    });
+
     const connectors = new ConnectorService({
       policy: connectorPolicyGate(policy),
       healthIntervalMs: config.connectors?.healthIntervalMs,
@@ -198,6 +210,7 @@ class RyvanPlatform implements Platform {
     this.container.registerInstance("connectors", connectors);
     this.container.registerInstance("workflow", workflow);
     this.container.registerInstance("mission", mission);
+    this.container.registerInstance("observability", observability);
     this.container.registerInstance("documents", storage.documents);
     this.container.registerInstance("cache", storage.cache);
     if (storage.vectors) {

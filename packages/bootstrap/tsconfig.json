@@ -21,6 +21,7 @@
     { "path": "../audit" },
     { "path": "../connector-sdk" },
     { "path": "../storage" },
-    { "path": "../persistence" }
+    { "path": "../persistence" },
+    { "path": "../observability" }
   ]
 }

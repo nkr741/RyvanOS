@@ -52,13 +52,18 @@ export class ModelRouter {
       throw new ModelError(modelId, `No adapter registered for provider "${config.provider}"`);
     }
 
-    await this.eventBus?.emit("model:called", {
-      requestId,
-      model: modelId,
-      provider: config.provider,
-      messageCount: request.messages.length,
-      stream: request.stream ?? false,
-    });
+    await this.eventBus?.emit(
+      "model:called",
+      {
+        requestId,
+        model: modelId,
+        provider: config.provider,
+        messageCount: request.messages.length,
+        stream: request.stream ?? false,
+        tenant: request.tenant,
+      },
+      { source: "models", correlationId: request.correlationId },
+    );
 
     const startTime = performance.now();
     const response = await adapter.chat(request, config);
@@ -79,15 +84,20 @@ export class ModelRouter {
       cost: result.usage.estimatedCost,
     });
 
-    await this.eventBus?.emit("model:response", {
-      requestId,
-      id: result.id,
-      model: modelId,
-      provider: config.provider,
-      latencyMs,
-      usage: result.usage,
-      finishReason: result.finishReason,
-    });
+    await this.eventBus?.emit(
+      "model:response",
+      {
+        requestId,
+        id: result.id,
+        model: modelId,
+        provider: config.provider,
+        latencyMs,
+        usage: result.usage,
+        finishReason: result.finishReason,
+        tenant: request.tenant,
+      },
+      { source: "models", correlationId: request.correlationId },
+    );
 
     return result;
   }

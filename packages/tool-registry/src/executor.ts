@@ -78,12 +78,19 @@ export class ToolExecutor {
       });
 
       if (this.eventBus) {
-        await this.eventBus.emit(EVENTS.TOOL_EXECUTED, {
-          toolName,
-          success: finalResult.success,
-          executionTimeMs,
-          correlationId: executionContext.correlationId,
-        });
+        await this.eventBus.emit(
+          EVENTS.TOOL_EXECUTED,
+          {
+            toolName,
+            success: finalResult.success,
+            executionTimeMs,
+            correlationId: executionContext.correlationId,
+            agentId: executionContext.agentId,
+          },
+          // Also as the event's correlationId, so tracing can place this call
+          // in the trace of the work that made it.
+          { source: "tools", correlationId: executionContext.correlationId },
+        );
       }
 
       return finalResult;
@@ -107,12 +114,17 @@ export class ToolExecutor {
       });
 
       if (this.eventBus) {
-        await this.eventBus.emit(EVENTS.TOOL_ERROR, {
-          toolName,
-          error: errorMessage,
-          executionTimeMs,
-          correlationId: executionContext.correlationId,
-        });
+        await this.eventBus.emit(
+          EVENTS.TOOL_ERROR,
+          {
+            toolName,
+            error: errorMessage,
+            executionTimeMs,
+            correlationId: executionContext.correlationId,
+            agentId: executionContext.agentId,
+          },
+          { source: "tools", correlationId: executionContext.correlationId },
+        );
       }
 
       return failResult;

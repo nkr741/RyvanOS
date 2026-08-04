@@ -60,6 +60,11 @@ export interface PlatformConfig {
     healthIntervalMs?: number;
   };
 
+  observability?: {
+    /** Cap on spans retained per trace, so a runaway loop cannot exhaust memory. Default 2000. */
+    maxSpansPerTrace?: number;
+  };
+
   /**
    * Durable storage. Omit it entirely and the platform runs fully in memory,
    * which is right for tests and wrong for production — nothing survives a

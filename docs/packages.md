@@ -575,3 +575,39 @@ const result = await connectors.execute("salesforce", "getAccount", { id });
 `BaseConnector` handles connection state, operation validation, timeouts, latency measurement, retry classification, and turning a thrown error into a `ConnectorResult`. Subclasses supply three things: the operations they expose, how to connect, and how to perform one call.
 
 Operations marked `mutates: true` are checked against policy before the vendor is called — a denied write is never sent.
+
+---
+
+## @ryvan/observability
+
+**Purpose:** Turns the platform's event stream into traces — a timeline of what a mission actually did, and what it cost.
+
+### It observes; it does not instrument
+
+No service was modified to produce spans. Mission, workflow, step, model, tool and connector events already carry the identifiers needed to stitch a tree together, so tracing is a **subscriber**. Two consequences worth stating: it cannot break the thing it observes, and any service that starts emitting lifecycle events is traced for free.
+
+The trace id is the event's `correlationId`. A mission generates one and passes it to its workflow, so everything beneath one mission shares a trace.
+
+```typescript
+const obs = platform.container.resolve<ObservabilityService>("observability");
+
+const trace = await obs.trace(correlationId);
+// { durationMs, status, spanCount, errorCount, totalCostUsd, totalTokens, missionId, orgId }
+
+const tree = await obs.tree(correlationId);
+// mission:payroll.run
+//   └── workflow:payroll
+//         ├── step:Collect
+//         │     └── tool:send_email
+//         └── approval:Finance sign-off
+```
+
+### Cost attribution
+
+`model:response` carries usage, so model spend lands on the span that incurred it and rolls up to the trace. Asking "what did this mission cost?" is a property read, not a query across logs.
+
+For this to work the caller must pass `correlationId` on the `ModelRequest` — that field exists for exactly this reason. A model call made without one is still executed and still billed, but it cannot be attributed to a trace, so it is skipped rather than guessed at.
+
+### Known limitation
+
+A model or tool call reports which trace it belongs to but not which *step* invoked it, so it is attached to the innermost span still open in that trace. That is correct for sequential work and can misplace a call under concurrent steps. Attributing it exactly requires passing a parent span id, which `Tracer` accepts directly.

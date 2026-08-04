@@ -55,6 +55,14 @@ export interface ModelRequest {
   stop?: string[];
   stream?: boolean;
   routingHints?: RoutingHints;
+  /**
+   * Ties this call to the work that caused it. Emitted on `model:called` and
+   * `model:response`, which is what lets a trace attribute model spend to the
+   * mission that incurred it. Without it a model call is unattributable.
+   */
+  correlationId?: string;
+  /** Tenant the call is made on behalf of, for per-organisation cost rollups. */
+  tenant?: { orgId?: string; userId?: string; agentId?: string };
 }
 
 export interface TokenUsage {
