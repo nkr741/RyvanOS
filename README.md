@@ -74,9 +74,19 @@ npx pnpm@9.15.0 serve
 
 ## Documentation
 
+### Governance — how we decide *(changes only by amendment)*
+
 | Document | Covers |
 |----------|--------|
-| [architecture.md](docs/architecture.md) | Layers, ports, dependency rules, start order |
+| [ENGINEERING_CONSTITUTION.md](docs/ENGINEERING_CONSTITUTION.md) | The 21 rules every engineer and AI agent follows, and why each exists |
+| [PLATFORM_BOUNDARY.md](docs/PLATFORM_BOUNDARY.md) | The five-test procedure answering "RyvanOS or product?" |
+| [OWNERSHIP_MATRIX.md](docs/OWNERSHIP_MATRIX.md) | Exactly one owner for every capability, package and SDK surface |
+
+### Architecture and operations — how it is built
+
+| Document | Covers |
+|----------|--------|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, ports, dependency rules, start order, known gaps |
 | [packages.md](docs/packages.md) | Every package, with the reasoning behind its design |
 | [deployment.md](docs/deployment.md) | Docker, config, health probes, backups, security |
 | [PLATFORM-ROADMAP.md](docs/PLATFORM-ROADMAP.md) | What is done, what is next, and what **not** to build |
