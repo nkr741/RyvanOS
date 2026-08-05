@@ -1,0 +1,45 @@
+# Without this, COPY brings the host's node_modules into the image — and pnpm's
+# are symlinks into a store at a host path that does not exist in the container,
+# so they overwrite the container's correct links with broken ones and the build
+# fails on "Cannot find module .../typescript/bin/tsc".
+#
+# It also keeps the build context small: the tree is hundreds of megabytes.
+node_modules
+**/node_modules
+
+# Build output is produced inside the image, never copied in.
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+.turbo
+**/.turbo
+.next
+**/.next
+
+.git
+.github
+.gitignore
+
+# Never let a real .env reach an image layer — layers are readable by anyone
+# who can pull the image, and deleting the file later does not remove it.
+.env
+.env.*
+!.env.example
+
+coverage
+**/coverage
+test-results
+playwright-report
+
+# The platform image builds packages/ only; products build their own.
+apps
+
+docs
+*.md
+!README.md
+
+.vscode
+.idea
+.DS_Store
+Thumbs.db

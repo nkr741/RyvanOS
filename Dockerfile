@@ -9,20 +9,14 @@ FROM node:22-alpine AS build
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
-# Manifests first: this layer is cached until a dependency actually changes,
-# so ordinary source edits do not re-download the tree.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
-COPY packages/*/package.json ./manifests/
-
-# pnpm needs each manifest back in its own directory.
-RUN for file in manifests/*.json; do \
-      name=$(node -p "require('./$file').name.replace('@ryvan/','')"); \
-      mkdir -p "packages/$name" && mv "$file" "packages/$name/package.json"; \
-    done && rmdir manifests
-
-RUN pnpm install --frozen-lockfile --filter "./packages/**"
-
 COPY packages ./packages
+
+# Source is copied before install, not after. pnpm links each workspace
+# package's node_modules into its directory; copying source over the top
+# afterwards clobbers those links, and the build then cannot find typescript
+# or zod. Ordering it this way costs a cache layer and works.
+RUN pnpm install --frozen-lockfile --filter "./packages/**"
 RUN pnpm exec turbo build --filter="./packages/*"
 
 # Drop dev dependencies before they can be copied forward.
