@@ -16,25 +16,23 @@ export interface ModelConfig {
   endpoint?: string;
 }
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  name?: string;
-  toolCallId?: string;
-  toolCalls?: ToolCall[];
-}
+// Conversation shapes are defined once, in @ryvan/contracts, because they
+// cross package and SDK boundaries (Constitution Article 3). Re-exported here
+// so existing importers keep working.
+export type { ChatMessage, ToolCall, ToolSchema } from "@ryvan/contracts";
 
-export interface ToolCall {
-  id: string;
-  name: string;
-  arguments: string;
-}
+import type { ChatMessage, ToolCall, ToolSchema } from "@ryvan/contracts";
 
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-}
+/**
+ * @deprecated Use `ToolSchema`. Renamed because `@ryvan/tool-registry` also
+ * exports a `ToolDefinition` describing something different — a tool as
+ * *registered* (validation, timeouts, permissions) rather than as *described
+ * to a model*. One name meaning two things reads as a bug in whichever package
+ * you know less well.
+ *
+ * Removed at Beta (Constitution Article 17).
+ */
+export type ToolDefinition = ToolSchema;
 
 export interface RoutingHints {
   preferLocal?: boolean;

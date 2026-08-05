@@ -1,6 +1,7 @@
 {
-  "name": "@ryvan/models",
+  "name": "@ryvan/contracts",
   "version": "1.0.0",
+  "description": "Ryvan Platform - Shared data contracts for everything crossing a package or SDK boundary",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,23 +15,10 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check \"src/**/*.ts\""
-  },
-  "dependencies": {
-    "@ryvan/common": "workspace:*",
-    "@ryvan/contracts": "workspace:*",
-    "@ryvan/events": "workspace:*",
-    "zod": "^3.23.0"
-  },
-  "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.30.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -1,6 +1,7 @@
 {
-  "name": "@ryvan/models",
+  "name": "@ryvan/context",
   "version": "1.0.0",
+  "description": "Ryvan Platform - Context assembly: what a model actually sees, and what was left out",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,24 +14,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
     "@ryvan/common": "workspace:*",
-    "@ryvan/contracts": "workspace:*",
-    "@ryvan/events": "workspace:*",
-    "zod": "^3.23.0"
-  },
-  "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.30.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    }
+    "@ryvan/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
