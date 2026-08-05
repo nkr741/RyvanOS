@@ -77,6 +77,23 @@ export interface PlatformConfig {
   };
 
   /**
+   * The Developer Console. Omit it and no console starts.
+   *
+   * Opt-in because it exposes every mission's inputs, the audit trail, and the
+   * approval buttons — that should be something someone turned on deliberately.
+   */
+  console?: {
+    /** Bearer token required on every request. At least 16 characters. */
+    token: string;
+    /** Default 4500. */
+    port?: number;
+    /** Default "127.0.0.1". Binding publicly should be a typed decision. */
+    host?: string;
+    /** Mount prefix when sitting behind a proxy, e.g. "/console". */
+    basePath?: string;
+  };
+
+  /**
    * Durable storage. Omit it entirely and the platform runs fully in memory,
    * which is right for tests and wrong for production — nothing survives a
    * restart. Supplying `postgresUrl` swaps every domain store for its durable

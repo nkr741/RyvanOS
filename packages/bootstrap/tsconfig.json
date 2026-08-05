@@ -23,6 +23,7 @@
     { "path": "../storage" },
     { "path": "../persistence" },
     { "path": "../observability" },
-    { "path": "../resilience" }
+    { "path": "../resilience" },
+    { "path": "../console" }
   ]
 }

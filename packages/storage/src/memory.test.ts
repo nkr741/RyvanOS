@@ -44,11 +44,17 @@ describe("cosineSimilarity", () => {
 describe("InMemoryKeyValueStore specifics", () => {
   it("preserves an existing deadline when incrementing without a new ttl", async () => {
     const store = new InMemoryKeyValueStore();
-    await store.increment("hits", 1, 60);
+    // Long enough that both increments land inside the window even under load —
+    // otherwise the first key expires between them and the second creates a
+    // fresh one with no deadline, failing for the wrong reason.
+    await store.increment("hits", 1, 400);
     await store.increment("hits", 1);
 
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(await store.get("hits")).toBe(2);
 
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // The second increment must not have extended the original deadline.
     expect(await store.get("hits")).toBeUndefined();
   });
 

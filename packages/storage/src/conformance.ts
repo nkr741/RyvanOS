@@ -45,12 +45,25 @@ export function keyValueConformance(name: string, create: () => Promise<KeyValue
       expect(await store.get("a")).toBeUndefined();
     });
 
-    it("expires a key after its ttl", async () => {
+    it("keeps a key that has not reached its ttl", async () => {
       const store = await create();
-      await store.set("short", "value", { ttlMs: 60 });
+      // Generous, because this asserts *presence*: a short TTL would expire
+      // under parallel test load before the read, failing for a reason that
+      // has nothing to do with the store.
+      await store.set("long", "value", { ttlMs: 60_000 });
 
-      expect(await store.get("short")).toBe("value");
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(await store.get("long")).toBe("value");
+      expect(await store.has("long")).toBe(true);
+    });
+
+    it("expires a key once its ttl passes", async () => {
+      const store = await create();
+      await store.set("short", "value", { ttlMs: 30 });
+
+      // Only absence is asserted here, so a slow machine can only make this
+      // more certain, never flaky.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
       expect(await store.get("short")).toBeUndefined();
       expect(await store.has("short")).toBe(false);
     });

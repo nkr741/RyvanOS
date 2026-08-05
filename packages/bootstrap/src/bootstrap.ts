@@ -24,6 +24,7 @@ import {
 import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@ryvan/storage";
 import { ObservabilityService } from "@ryvan/observability";
 import { ResilienceService } from "@ryvan/resilience";
+import { ConsoleService } from "@ryvan/console";
 import {
   DocumentApprovalStore,
   DocumentAuditStore,
@@ -41,6 +42,7 @@ import {
   policyApprovalGate,
   workflowRunner,
 } from "./adapters.js";
+import { consoleSources } from "./console-sources.js";
 import type { Platform, PlatformConfig, PlatformStatus } from "./types.js";
 
 /**
@@ -68,13 +70,13 @@ const SERVICE_START_ORDER = [
   "mission",
 ] as const;
 
-const SERVICE_STOP_ORDER = [...SERVICE_START_ORDER].reverse();
-
 class RyvanPlatform implements Platform {
   readonly container: Container;
   private _status: PlatformStatus = "created";
   private readonly logger: ILogger;
   private readonly drivers: StorageDriver[] = [];
+  /** Set when a console token was supplied, so start() knows to include it. */
+  private consoleEnabled = false;
   private shutdownRegistered = false;
 
   constructor(config: PlatformConfig) {
@@ -210,6 +212,46 @@ class RyvanPlatform implements Platform {
       this.trackModelSpend(eventBus, policy);
     }
 
+    // Opt-in: the console shows every mission's inputs and the approval
+    // buttons, so it starts only when a token has been supplied for it.
+    if (config.console?.token) {
+      const consoleService = new ConsoleService({
+        token: config.console.token,
+        port: config.console.port,
+        host: config.console.host,
+        basePath: config.console.basePath,
+        logger: this.logger,
+        sources: consoleSources({
+          missions: mission,
+          workflows: workflow,
+          observability,
+          policy,
+          audit,
+          resilience,
+          connectors,
+          services: [
+            identity,
+            policy,
+            resilience,
+            observability,
+            audit,
+            models,
+            memory,
+            tools,
+            connectors,
+            workflow,
+            runtime,
+            agentSdk,
+            mission,
+          ],
+          drivers: this.drivers,
+        }),
+      });
+
+      this.container.registerInstance("console", consoleService);
+      this.consoleEnabled = true;
+    }
+
     this.container.registerInstance("logger", this.logger);
     this.container.registerInstance("events", eventBus);
     this.container.registerInstance("identity", identity);
@@ -319,7 +361,7 @@ class RyvanPlatform implements Platform {
       this.logger.debug(`Storage driver connected: ${driver.kind}`);
     }
 
-    for (const name of SERVICE_START_ORDER) {
+    for (const name of this.startOrder()) {
       const service = this.container.resolve<Service>(name);
 
       if (typeof service?.start !== "function") {
@@ -342,7 +384,7 @@ class RyvanPlatform implements Platform {
     this._status = "stopping";
     this.logger.info("Ryvan Platform stopping");
 
-    for (const name of SERVICE_STOP_ORDER) {
+    for (const name of [...this.startOrder()].reverse()) {
       try {
         const service = this.container.resolve<Service>(name);
         await service.stop();
@@ -367,6 +409,14 @@ class RyvanPlatform implements Platform {
 
     this._status = "stopped";
     this.logger.info("Ryvan Platform stopped");
+  }
+
+  /** Start order, with the console appended when one was configured. */
+  private startOrder(): string[] {
+    // Last, so it can never be the reason the platform fails to come up: an
+    // inspector that takes the thing it inspects down with it is worse than
+    // no inspector.
+    return this.consoleEnabled ? [...SERVICE_START_ORDER, "console"] : [...SERVICE_START_ORDER];
   }
 
   status(): PlatformStatus {
