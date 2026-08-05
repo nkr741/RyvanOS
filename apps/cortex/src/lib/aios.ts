@@ -1,7 +1,7 @@
 import { createPlatform } from "@ryvan/bootstrap";
 import type { Platform } from "@ryvan/bootstrap";
+import { AnthropicAdapter } from "@ryvan/models";
 import type { ModelService } from "@ryvan/models";
-import { AnthropicAdapter } from "./anthropic-adapter";
 
 let _platform: Platform | null = null;
 let _startPromise: Promise<void> | null = null;
@@ -21,7 +21,10 @@ export function getAIOS(): Platform {
 
     if (process.env.ANTHROPIC_API_KEY) {
       const models = _platform.container.resolve<ModelService>("models");
-      models.registry.registerProvider(new AnthropicAdapter());
+      // Products register credentials, never adapters (OWNERSHIP_MATRIX 7.1).
+      models.registry.registerProvider(
+        new AnthropicAdapter({ apiKey: process.env.ANTHROPIC_API_KEY }),
+      );
     }
 
     _startPromise = _platform.start();

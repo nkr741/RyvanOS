@@ -1,3 +1,5 @@
+export { AnthropicAdapter } from "./providers/anthropic.js";
+export type { AnthropicAdapterOptions } from "./providers/anthropic.js";
 export { ModelRegistry } from "./registry.js";
 export { ModelRouter } from "./router.js";
 export { CostTracker } from "./cost-tracker.js";

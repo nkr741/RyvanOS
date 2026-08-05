@@ -491,6 +491,9 @@ importers:
 
   packages/models:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: '>=0.30.0'
+        version: 0.111.0(zod@3.25.76)
       '@ryvan/common':
         specifier: workspace:*
         version: link:../common
