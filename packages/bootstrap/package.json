@@ -36,7 +36,8 @@
     "@ryvan/connector-sdk": "workspace:*",
     "@ryvan/storage": "workspace:*",
     "@ryvan/persistence": "workspace:*",
-    "@ryvan/observability": "workspace:*"
+    "@ryvan/observability": "workspace:*",
+    "@ryvan/resilience": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

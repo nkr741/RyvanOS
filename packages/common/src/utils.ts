@@ -9,28 +9,77 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export interface BackoffOptions {
+  /** Delay before the first retry. */
+  baseDelay: number;
+  backoffMultiplier: number;
+  maxDelay: number;
+  /**
+   * Fraction of the delay to randomise, 0..1. Without jitter, every caller that
+   * failed at the same moment retries at the same moment — the thundering herd
+   * that turns a blip into an outage. Default 0.
+   */
+  jitter?: number;
+}
+
+/**
+ * Delay before retry `attempt` (1-based), capped and optionally jittered.
+ *
+ * Shared so the generic `retry()` helper, the workflow step executor, and the
+ * resilience layer cannot drift into three different backoff curves.
+ */
+export function computeBackoff(
+  attempt: number,
+  opts: BackoffOptions,
+  random = Math.random,
+): number {
+  const raw = opts.baseDelay * Math.pow(opts.backoffMultiplier, Math.max(0, attempt - 1));
+  const capped = Math.min(raw, opts.maxDelay);
+
+  if (!opts.jitter) return capped;
+
+  const spread = capped * Math.min(1, Math.max(0, opts.jitter));
+  // Centred on the capped delay, so jitter spreads retries either side rather
+  // than only ever making them sooner.
+  return Math.max(0, capped - spread / 2 + random() * spread);
+}
+
 export async function retry<T>(
   fn: () => Promise<T>,
-  opts: { maxRetries: number; baseDelay: number; maxDelay: number; backoffMultiplier: number },
+  opts: {
+    maxRetries: number;
+    baseDelay: number;
+    maxDelay: number;
+    backoffMultiplier: number;
+    jitter?: number;
+    /** Return false to give up immediately — a rejected payload will not fix itself. */
+    shouldRetry?: (error: Error, attempt: number) => boolean;
+    onRetry?: (error: Error, attempt: number, delayMs: number) => void;
+  },
 ): Promise<T> {
   if (opts.maxRetries < 0) {
     throw new Error("maxRetries must be >= 0");
   }
   let lastError: Error | undefined;
+
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (opts.shouldRetry && !opts.shouldRetry(lastError, attempt + 1)) {
+        throw lastError;
+      }
+
       if (attempt < opts.maxRetries) {
-        const delay = Math.min(
-          opts.baseDelay * Math.pow(opts.backoffMultiplier, attempt),
-          opts.maxDelay,
-        );
+        const delay = computeBackoff(attempt + 1, opts);
+        opts.onRetry?.(lastError, attempt + 1, delay);
         await sleep(delay);
       }
     }
   }
+
   throw lastError;
 }
 

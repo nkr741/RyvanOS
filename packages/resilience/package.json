@@ -1,7 +1,7 @@
 {
-  "name": "@ryvan/persistence",
+  "name": "@ryvan/resilience",
   "version": "1.0.0",
-  "description": "Ryvan Platform - Durable implementations of the domain store ports, backed by @ryvan/storage",
+  "description": "Ryvan Platform - Self-healing: circuit breakers, retry policies, fallbacks, and dead letters",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,15 +22,7 @@
   },
   "dependencies": {
     "@ryvan/common": "workspace:*",
-    "@ryvan/storage": "workspace:*",
-    "@ryvan/workflow-engine": "workspace:*",
-    "@ryvan/mission-engine": "workspace:*",
-    "@ryvan/audit": "workspace:*",
-    "@ryvan/memory": "workspace:*",
-    "@ryvan/policy-engine": "workspace:*",
-    "@ryvan/identity": "workspace:*",
-    "@ryvan/observability": "workspace:*",
-    "@ryvan/resilience": "workspace:*"
+    "@ryvan/events": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

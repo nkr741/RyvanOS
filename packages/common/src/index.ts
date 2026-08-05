@@ -28,6 +28,7 @@ export {
   generateId,
   sleep,
   retry,
+  computeBackoff,
   withTimeout,
   deepClone,
   deepFreeze,
@@ -48,6 +49,7 @@ export {
   applyRange,
 } from "./matching.js";
 export type { RangeOptions } from "./matching.js";
+export type { BackoffOptions } from "./utils.js";
 
 export {
   IdSchema,

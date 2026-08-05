@@ -23,17 +23,20 @@ import {
 } from "@ryvan/storage";
 import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@ryvan/storage";
 import { ObservabilityService } from "@ryvan/observability";
+import { ResilienceService } from "@ryvan/resilience";
 import {
   DocumentApprovalStore,
   DocumentAuditStore,
   DocumentIdentityStore,
   DocumentMemoryBackend,
   DocumentMissionStore,
+  DocumentDeadLetterStore,
   DocumentTraceStore,
   DocumentWorkflowStore,
 } from "@ryvan/persistence";
 import {
   connectorPolicyGate,
+  connectorResilienceGate,
   missionPolicyGate,
   policyApprovalGate,
   workflowRunner,
@@ -52,6 +55,7 @@ import type { Platform, PlatformConfig, PlatformStatus } from "./types.js";
 const SERVICE_START_ORDER = [
   "identity",
   "policy",
+  "resilience",
   "observability",
   "audit",
   "models",
@@ -160,8 +164,17 @@ class RyvanPlatform implements Platform {
       eventBus,
     });
 
+    const resilience = new ResilienceService({
+      policies: config.resilience?.policies,
+      defaultPolicy: config.resilience?.defaultPolicy,
+      deadLetters: storage.durable ? new DocumentDeadLetterStore(storage.documents) : undefined,
+      logger: this.logger,
+      eventBus,
+    });
+
     const connectors = new ConnectorService({
       policy: connectorPolicyGate(policy),
+      resilience: connectorResilienceGate(resilience),
       healthIntervalMs: config.connectors?.healthIntervalMs,
       logger: this.logger,
       eventBus,
@@ -210,6 +223,7 @@ class RyvanPlatform implements Platform {
     this.container.registerInstance("connectors", connectors);
     this.container.registerInstance("workflow", workflow);
     this.container.registerInstance("mission", mission);
+    this.container.registerInstance("resilience", resilience);
     this.container.registerInstance("observability", observability);
     this.container.registerInstance("documents", storage.documents);
     this.container.registerInstance("cache", storage.cache);

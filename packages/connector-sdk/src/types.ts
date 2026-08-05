@@ -115,8 +115,29 @@ export interface ConnectorPolicyGate {
   }): Promise<{ effect: ConnectorPolicyEffect; allowed: boolean; reason: string }>;
 }
 
+/**
+ * Port implemented by `@ryvan/resilience` and injected by `@ryvan/bootstrap`.
+ *
+ * Declared here so this package imports no other domain package. Without one,
+ * calls go straight to the vendor — resilience is opt-in, not assumed.
+ */
+export interface ResilienceGate {
+  run<T>(
+    key: string,
+    fn: () => Promise<T>,
+    options?: {
+      isRetryable?: (error: Error) => boolean;
+      payload?: Record<string, unknown>;
+      correlationId?: string;
+      missionId?: string;
+    },
+  ): Promise<T>;
+}
+
 export interface ConnectorServiceOptions {
   policy?: ConnectorPolicyGate;
+  /** Retries, circuit breaking, and fallbacks around every connector call. */
+  resilience?: ResilienceGate;
   /** How often registered connectors are health-probed. Default 60000ms. */
   healthIntervalMs?: number;
   logger?: import("@ryvan/common").ILogger;

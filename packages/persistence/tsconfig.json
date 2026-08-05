@@ -15,6 +15,7 @@
     { "path": "../memory" },
     { "path": "../policy-engine" },
     { "path": "../identity" },
-    { "path": "../observability" }
+    { "path": "../observability" },
+    { "path": "../resilience" }
   ]
 }

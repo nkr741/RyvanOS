@@ -15,5 +15,6 @@ export type {
   ConnectorRegistration,
   ConnectorPolicyGate,
   ConnectorPolicyEffect,
+  ResilienceGate,
   ConnectorServiceOptions,
 } from "./types.js";

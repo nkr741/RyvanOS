@@ -184,6 +184,14 @@ export const EVENTS = {
   COST_THRESHOLD: "cost:threshold",
   COST_EXCEEDED: "cost:exceeded",
 
+  RESILIENCE_RETRY: "resilience:retry",
+  RESILIENCE_FALLBACK: "resilience:fallback",
+  RESILIENCE_DEAD_LETTERED: "resilience:dead_lettered",
+  RESILIENCE_REPLAYED: "resilience:replayed",
+  CIRCUIT_OPENED: "circuit:opened",
+  CIRCUIT_HALF_OPEN: "circuit:half_open",
+  CIRCUIT_CLOSED: "circuit:closed",
+
   CONNECTOR_REGISTERED: "connector:registered",
   CONNECTOR_CONNECTED: "connector:connected",
   CONNECTOR_DISCONNECTED: "connector:disconnected",

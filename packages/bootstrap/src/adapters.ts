@@ -1,7 +1,8 @@
 import type { PolicyService } from "@ryvan/policy-engine";
 import type { WorkflowService, ApprovalGate, WorkflowRun } from "@ryvan/workflow-engine";
 import type { PolicyGate, WorkflowRunHandle, WorkflowRunner } from "@ryvan/mission-engine";
-import type { ConnectorPolicyGate } from "@ryvan/connector-sdk";
+import type { ConnectorPolicyGate, ResilienceGate } from "@ryvan/connector-sdk";
+import type { ResilienceService } from "@ryvan/resilience";
 
 /**
  * Port adapters.
@@ -77,6 +78,22 @@ export function missionPolicyGate(policy: PolicyService): PolicyGate {
 
     async checkApproval(approvalId) {
       return policy.approvalStatus(approvalId);
+    },
+  };
+}
+
+/**
+ * Lets connector calls retry, circuit-break, and fall back.
+ *
+ * Unwraps the outcome to the bare result, because the connector service only
+ * needs what it asked for — attempt counts and fallback provenance go to the
+ * event bus, where the trace picks them up.
+ */
+export function connectorResilienceGate(resilience: ResilienceService): ResilienceGate {
+  return {
+    async run(key, fn, options) {
+      const outcome = await resilience.execute(key, fn, options);
+      return outcome.result;
     },
   };
 }

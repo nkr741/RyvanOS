@@ -12,9 +12,21 @@ import type {
   ConnectorResult,
   ConnectorSchema,
   ConnectorServiceOptions,
+  ResilienceGate,
 } from "./types.js";
 
 const DEFAULT_HEALTH_INTERVAL_MS = 60_000;
+
+/**
+ * Carries a retryable connector failure as a throw, so the resilience gate can
+ * see it. Never escapes this module — `runProtected` unwraps it either way.
+ */
+class RetryableConnectorFailure extends Error {
+  constructor(readonly result: ConnectorResult<unknown>) {
+    super(result.error ?? "retryable connector failure");
+    this.name = "RetryableConnectorFailure";
+  }
+}
 
 /**
  * Registry and call surface for connectors.
@@ -33,6 +45,7 @@ export class ConnectorService implements Service {
   private state: Status = "stopped";
   private readonly registrations = new Map<string, ConnectorRegistration>();
   private readonly policy?: ConnectorPolicyGate;
+  private readonly resilience?: ResilienceGate;
   private readonly healthIntervalMs: number;
   private readonly logger?: ILogger;
   private readonly emitEvent: ScopedEmitter;
@@ -40,6 +53,7 @@ export class ConnectorService implements Service {
 
   constructor(options: ConnectorServiceOptions = {}) {
     this.policy = options.policy;
+    this.resilience = options.resilience;
     this.healthIntervalMs = options.healthIntervalMs ?? DEFAULT_HEALTH_INTERVAL_MS;
     this.logger = options.logger;
     this.emitEvent = scopedEmitter("connectors", options.eventBus);
@@ -196,7 +210,9 @@ export class ConnectorService implements Service {
       }
     }
 
-    const result = await connector.execute<T>(operationName, input, context);
+    const result = await this.runProtected(connectorId, operationName, () =>
+      connector.execute<T>(operationName, input, context),
+    );
 
     await this.emitEvent(
       result.success ? EVENTS.CONNECTOR_EXECUTED : EVENTS.CONNECTOR_ERROR,
@@ -214,6 +230,51 @@ export class ConnectorService implements Service {
     );
 
     return result;
+  }
+
+  /**
+   * Runs a connector call under the resilience gate, if one is configured.
+   *
+   * `BaseConnector` reports failure as a result rather than throwing, but
+   * retry and circuit-breaking key on thrown errors. So a *retryable* failure
+   * is briefly turned into a throw, and turned back into a result once the
+   * attempts are exhausted — the caller's contract is unchanged either way.
+   * A non-retryable failure is returned as-is and never counts against the
+   * circuit, since a rejected payload says nothing about the vendor's health.
+   */
+  private async runProtected<T>(
+    connectorId: string,
+    operationName: string,
+    call: () => Promise<ConnectorResult<T>>,
+  ): Promise<ConnectorResult<T>> {
+    if (!this.resilience) return call();
+
+    try {
+      return await this.resilience.run(
+        `connector:${connectorId}:${operationName}`,
+        async () => {
+          const result = await call();
+          if (!result.success && result.retryable) {
+            throw new RetryableConnectorFailure(result as ConnectorResult<unknown>);
+          }
+          return result;
+        },
+        { isRetryable: (error) => error instanceof RetryableConnectorFailure },
+      );
+    } catch (err) {
+      if (err instanceof RetryableConnectorFailure) {
+        return err.result as ConnectorResult<T>;
+      }
+
+      // A circuit-open rejection, or anything else the gate raised.
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: "RESILIENCE_BLOCKED",
+        latencyMs: 0,
+        retryable: true,
+      };
+    }
   }
 
   /** Probes every connector and emits on any status change. */

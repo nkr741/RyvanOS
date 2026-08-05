@@ -5,6 +5,7 @@ import type { BudgetLimit, PolicyEffect, PolicyRule } from "@ryvan/policy-engine
 import type { WorkflowDefinition, WorkflowStore } from "@ryvan/workflow-engine";
 import type { MissionPlanner, MissionStore, MissionTemplate } from "@ryvan/mission-engine";
 import type { AuditStore } from "@ryvan/audit";
+import type { ResiliencePolicy } from "@ryvan/resilience";
 
 export interface PlatformConfig {
   identity: {
@@ -63,6 +64,16 @@ export interface PlatformConfig {
   observability?: {
     /** Cap on spans retained per trace, so a runaway loop cannot exhaust memory. Default 2000. */
     maxSpansPerTrace?: number;
+  };
+
+  /**
+   * Retries, circuit breakers, fallbacks and dead letters, matched by glob
+   * against a call key such as "connector:sap:createInvoice".
+   */
+  resilience?: {
+    policies?: ResiliencePolicy[];
+    /** Applied to any target no policy matches. */
+    defaultPolicy?: Omit<ResiliencePolicy, "target">;
   };
 
   /**
