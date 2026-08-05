@@ -18,12 +18,14 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean",
+    "smoke": "node scripts/smoke.mjs",
     "format": "prettier --write \"packages/**/*.ts\" \"apps/**/*.ts\"",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
   "devDependencies": {
+    "@ryvan/bootstrap": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.0",
     "eslint": "^10.7.0",

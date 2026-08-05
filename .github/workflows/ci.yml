@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # A newer push supersedes an in-flight run on the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    name: Platform packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # The integration tests skip when these URLs are absent, which is right for
+    # a laptop with no Docker and wrong for CI: a driver only ever exercised
+    # against its in-memory twin is a driver nobody has tested. CI supplies
+    # them, so the Postgres and Redis suites actually run here.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: ryvan_test
+          POSTGRES_USER: ryvan
+          POSTGRES_PASSWORD: ryvan_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ryvan -d ryvan_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      RYVAN_TEST_POSTGRES_URL: postgres://ryvan:ryvan_dev@localhost:5432/ryvan_test
+      RYVAN_TEST_REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        # Fails if the lockfile does not match the manifests, so a dependency
+        # added without committing the lockfile cannot reach main.
+        run: pnpm install --frozen-lockfile --filter "./packages/**"
+
+      - name: Build, typecheck, lint, test
+        run: pnpm exec turbo build typecheck lint test --filter="./packages/*"
+
+      - name: Confirm the integration tests actually ran
+        # Without this, losing the service containers would silently downgrade
+        # CI to the in-memory suites and still report green.
+        run: |
+          cd packages/storage
+          output=$(pnpm exec vitest run src/integration.test.ts --reporter=basic 2>&1)
+          echo "$output"
+          if echo "$output" | grep -qi "skipped"; then
+            echo "::error::Integration tests were skipped — Postgres/Redis were not reachable."
+            exit 1
+          fi
+
+  runs-under-node:
+    name: Runs under plain Node
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Vitest bundles, which once hid a CommonJS import that broke the platform
+    # under native ESM: every test passed while `node dist/index.js` failed on
+    # import. This job boots the built output the way production would.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --filter "./packages/**"
+      - run: pnpm exec turbo build --filter="./packages/*"
+
+      - name: Boot the platform from built output
+        run: node scripts/smoke.mjs

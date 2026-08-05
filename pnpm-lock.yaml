@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.7.0(jiti@2.7.0))
+      '@ryvan/bootstrap':
+        specifier: workspace:*
+        version: link:packages/bootstrap
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.1
