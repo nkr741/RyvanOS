@@ -25,6 +25,9 @@
     { "path": "../observability" },
     { "path": "../resilience" },
     { "path": "../console" },
-    { "path": "../secrets" }
+    { "path": "../secrets" },
+    { "path": "../contracts" },
+    { "path": "../context" },
+    { "path": "../prompts" }
   ]
 }

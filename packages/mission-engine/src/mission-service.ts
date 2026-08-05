@@ -17,6 +17,7 @@ import type {
 } from "./types.js";
 
 const DEFAULT_POLICY_ACTION = "mission:execute";
+const DEFAULT_QUOTA_RESOURCE = "missions";
 const DEFAULT_APPROVAL_POLL_MS = 5_000;
 
 const TERMINAL_STATUSES = new Set<MissionStatus>(["completed", "failed", "cancelled"]);
@@ -47,6 +48,7 @@ export class MissionService implements Service {
   private readonly workflows?: WorkflowRunner;
   private readonly policy?: PolicyGate;
   private readonly policyAction: string;
+  private readonly quotaResource: string;
   private readonly approvalPollIntervalMs: number;
   private readonly logger?: ILogger;
   private readonly eventBus?: IEventBus;
@@ -60,6 +62,7 @@ export class MissionService implements Service {
     this.workflows = options.workflows;
     this.policy = options.policy;
     this.policyAction = options.policyAction ?? DEFAULT_POLICY_ACTION;
+    this.quotaResource = options.quotaResource ?? DEFAULT_QUOTA_RESOURCE;
     this.approvalPollIntervalMs = options.approvalPollIntervalMs ?? DEFAULT_APPROVAL_POLL_MS;
     this.logger = options.logger;
     this.eventBus = options.eventBus;
@@ -226,6 +229,10 @@ export class MissionService implements Service {
 
     const verdict = await this.policy.enforce({
       action: this.policyAction,
+      // Named so per-tenant mission ceilings are actually enforced. Without a
+      // resource the policy engine has nothing to count, and a configured
+      // quota silently never applies.
+      quotaResource: this.quotaResource,
       resource: `mission:${mission.type}`,
       subject: mission.subject ?? {},
       attributes: { missionId: mission.id, ...mission.metadata },

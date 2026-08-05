@@ -114,6 +114,9 @@ export interface PolicyGate {
     subject: MissionSubject;
     attributes?: Record<string, unknown>;
     estimatedCostUsd?: number;
+    /** Countable resource consumed, checked against tenant volume quotas. */
+    quotaResource?: string;
+    quotaAmount?: number;
   }): Promise<PolicyVerdict>;
   checkApproval(approvalId: string): Promise<"pending" | "granted" | "denied" | "expired">;
 }
@@ -148,6 +151,11 @@ export interface MissionServiceOptions {
   store?: MissionStore;
   /** Policy action checked before a mission runs. Default "mission:execute". */
   policyAction?: string;
+  /**
+   * Countable resource a mission consumes, checked against tenant quotas.
+   * Default "missions". Set to undefined to disable quota checks entirely.
+   */
+  quotaResource?: string;
   /** How often awaiting-approval missions are re-checked. Default 5000ms. */
   approvalPollIntervalMs?: number;
   logger?: import("@ryvan/common").ILogger;

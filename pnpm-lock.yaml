@@ -273,6 +273,12 @@ importers:
       '@ryvan/console':
         specifier: workspace:*
         version: link:../console
+      '@ryvan/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ryvan/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@ryvan/events':
         specifier: workspace:*
         version: link:../events
@@ -297,6 +303,9 @@ importers:
       '@ryvan/policy-engine':
         specifier: workspace:*
         version: link:../policy-engine
+      '@ryvan/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@ryvan/resilience':
         specifier: workspace:*
         version: link:../resilience
@@ -636,6 +645,25 @@ importers:
       '@ryvan/events':
         specifier: workspace:*
         version: link:../events
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
+
+  packages/prompts:
+    dependencies:
+      '@ryvan/common':
+        specifier: workspace:*
+        version: link:../common
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
