@@ -280,6 +280,14 @@ The boundary is not permanent for any single capability. It is permanent for the
 5. Assign an owner in `OWNERSHIP_MATRIX.md`.
 6. It enters at `Alpha` lifecycle state (Constitution Article 17), not `GA`.
 
+### The Two-Consumer Soak *(amendment, ratified)*
+
+A promoted capability may not reach **GA** until it has been **used successfully by two products, each through at least one released version**.
+
+Extraction proves an abstraction *compiles* against two callers. Only a release proves it *survives* two callers — their upgrade cycles, their edge cases, their production load. The gap between those two facts is where premature abstractions hide.
+
+Until the soak completes, a promoted capability sits at `Beta` (Constitution Article 17) and may still take breaking changes.
+
 **The failure mode to avoid:** copying the implementation into the platform and letting the original live on. That is not promotion; that is duplication with a nicer address.
 
 ## Demotion — platform → product
