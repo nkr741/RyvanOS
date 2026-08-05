@@ -19,6 +19,8 @@
     "typecheck": "turbo typecheck",
     "clean": "turbo clean",
     "smoke": "node scripts/smoke.mjs",
+    "serve": "node scripts/serve.mjs",
+    "migrate": "node scripts/migrate.mjs",
     "format": "prettier --write \"packages/**/*.ts\" \"apps/**/*.ts\"",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@ryvan/bootstrap": "workspace:*",
+    "@ryvan/storage": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.0",
     "eslint": "^10.7.0",

@@ -6,6 +6,7 @@ import { InMemoryApprovalStore } from "./approvals.js";
 import type { ApprovalStore, RaiseApprovalInput } from "./approvals.js";
 import { BudgetGuard } from "./budget-guard.js";
 import { PolicyEngine } from "./policy-engine.js";
+import { QuotaGuard } from "./quota-guard.js";
 import type {
   ApprovalRequest,
   ApprovalStatus,
@@ -29,6 +30,7 @@ export class PolicyService implements Service {
 
   readonly engine: PolicyEngine;
   readonly budgets: BudgetGuard;
+  readonly quotas: QuotaGuard;
   readonly approvals: ApprovalStore;
 
   private state: Status = "stopped";
@@ -45,6 +47,7 @@ export class PolicyService implements Service {
       rules: options.rules,
     });
     this.budgets = new BudgetGuard(options.budgets);
+    this.quotas = new QuotaGuard(options.quotas, options.counters);
     // Durable when bootstrap supplies one; process-local otherwise.
     this.approvals = options.approvalStore ?? new InMemoryApprovalStore(options.approvalTtlMs);
   }
@@ -109,6 +112,37 @@ export class PolicyService implements Service {
 
     for (const warning of this.budgets.takeNewWarnings()) {
       await this.emit(EVENTS.COST_THRESHOLD, { budget: warning });
+    }
+
+    // Volume ceilings, checked only when the caller named a countable resource.
+    // Consuming before deciding means two concurrent callers cannot both see
+    // room and both proceed.
+    if (request.quotaResource) {
+      const outcome = await this.quotas.consume(request.quotaResource, scope, request.quotaAmount);
+
+      for (const warning of this.quotas.warnings(outcome.statuses)) {
+        await this.emit(EVENTS.QUOTA_WARNING, { quota: warning, subject: request.subject });
+      }
+
+      if (!outcome.allowed) {
+        const quota = outcome.exceeded!;
+        const decision: PolicyDecision = {
+          effect: "deny",
+          allowed: false,
+          reason: `Quota "${quota.limitId}" exceeded: ${quota.used} of ${quota.limit} ${quota.resource} per ${quota.period}`,
+          matchedRuleIds: [],
+          quota,
+          evaluatedAt: Date.now(),
+        };
+
+        await this.emit(EVENTS.QUOTA_EXCEEDED, {
+          action: request.action,
+          subject: request.subject,
+          quota,
+        });
+        await this.emitDecision(request, decision);
+        return decision;
+      }
     }
 
     const decision = this.engine.evaluate(request);

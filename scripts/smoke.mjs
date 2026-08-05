@@ -17,6 +17,7 @@ const EXPECTED_SERVICES = [
   "models",
   "memory",
   "tools",
+  "secrets",
   "policy",
   "resilience",
   "observability",
@@ -99,6 +100,14 @@ try {
   const entries = await audit.query();
   check(entries.length > 0, `audit recorded ${entries.length} entries`);
   check((await audit.verify()).valid, "audit hash chain verifies");
+
+  // Secrets exercise node:crypto AES-GCM under native ESM.
+  const secrets = platform.container.resolve("secrets");
+  await secrets.set({ name: "smoke.credential", value: "hunter2", scope: { orgId: org.id } });
+  const revealed = await secrets.reveal("smoke.credential", { orgId: org.id });
+  check(revealed === "hunter2", "secrets seal and unseal under native ESM");
+  const listed = await secrets.list({ orgId: org.id });
+  check(!JSON.stringify(listed).includes("hunter2"), "listing a secret never exposes its value");
 
   const observability = platform.container.resolve("observability");
   const trace = await observability.trace(run.correlationId);

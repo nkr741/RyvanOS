@@ -9,3 +9,5 @@ export { DocumentApprovalStore } from "./approval-store.js";
 export { DocumentIdentityStore } from "./identity-store.js";
 export { DocumentTraceStore } from "./trace-store.js";
 export { DocumentDeadLetterStore } from "./dead-letter-store.js";
+export { DocumentSecretStore } from "./secret-store.js";
+export { KeyValueCounterStore } from "./counter-store.js";

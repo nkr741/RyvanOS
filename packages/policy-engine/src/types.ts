@@ -26,6 +26,13 @@ export interface PolicyRequest {
   attributes?: Record<string, unknown>;
   /** Projected spend for this action, checked against budget limits. */
   estimatedCostUsd?: number;
+  /**
+   * Countable resource this action consumes, e.g. "missions" or
+   * "connector.calls". Omit it and no quota is checked.
+   */
+  quotaResource?: string;
+  /** How much of that resource. Default 1. */
+  quotaAmount?: number;
 }
 
 /**
@@ -72,6 +79,8 @@ export interface PolicyDecision {
   approvalId?: string;
   /** Present when a budget limit contributed to the decision. */
   budget?: BudgetStatus;
+  /** Present when a quota limit contributed to the decision. */
+  quota?: import("./quota-guard.js").QuotaStatus;
   evaluatedAt: number;
 }
 
@@ -133,6 +142,13 @@ export interface PolicyEngineOptions {
 
 export interface PolicyServiceOptions extends PolicyEngineOptions {
   budgets?: BudgetLimit[];
+  /** Volume ceilings — missions per month, connector calls per minute. */
+  quotas?: import("./quota-guard.js").QuotaLimit[];
+  /**
+   * Where quota counters live. Must be shared across replicas to mean
+   * anything; bootstrap supplies one backed by the key/value store.
+   */
+  counters?: import("./quota-guard.js").CounterStore;
   /** How long a raised approval stays pending before expiring. Default 24h. */
   approvalTtlMs?: number;
   /**

@@ -38,7 +38,8 @@
     "@ryvan/persistence": "workspace:*",
     "@ryvan/observability": "workspace:*",
     "@ryvan/resilience": "workspace:*",
-    "@ryvan/console": "workspace:*"
+    "@ryvan/console": "workspace:*",
+    "@ryvan/secrets": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

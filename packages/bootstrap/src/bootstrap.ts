@@ -25,6 +25,7 @@ import type { DocumentStore, KeyValueStore, StorageDriver, VectorStore } from "@
 import { ObservabilityService } from "@ryvan/observability";
 import { ResilienceService } from "@ryvan/resilience";
 import { ConsoleService } from "@ryvan/console";
+import { SecretsService } from "@ryvan/secrets";
 import {
   DocumentApprovalStore,
   DocumentAuditStore,
@@ -32,6 +33,8 @@ import {
   DocumentMemoryBackend,
   DocumentMissionStore,
   DocumentDeadLetterStore,
+  DocumentSecretStore,
+  KeyValueCounterStore,
   DocumentTraceStore,
   DocumentWorkflowStore,
 } from "@ryvan/persistence";
@@ -56,6 +59,7 @@ import type { Platform, PlatformConfig, PlatformStatus } from "./types.js";
  */
 const SERVICE_START_ORDER = [
   "identity",
+  "secrets",
   "policy",
   "resilience",
   "observability",
@@ -136,10 +140,21 @@ class RyvanPlatform implements Platform {
 
     const agentSdk = new AgentService();
 
+    const secrets = new SecretsService({
+      keys: config.secrets?.keys ?? [{ id: "default", material: config.identity.tokenSecret }],
+      store: storage.durable ? new DocumentSecretStore(storage.documents) : undefined,
+      logger: this.logger,
+      eventBus,
+    });
+
     const policy = new PolicyService({
       defaultEffect: config.policy?.defaultEffect,
       rules: config.policy?.rules,
       budgets: config.policy?.budgets,
+      quotas: config.policy?.quotas,
+      // Counters must be shared across replicas or a per-tenant ceiling is not
+      // a ceiling; Redis provides that, the in-memory store does not.
+      counters: new KeyValueCounterStore(storage.cache),
       approvalTtlMs: config.policy?.approvalTtlMs,
       approvalStore: storage.durable
         ? new DocumentApprovalStore(storage.documents, config.policy?.approvalTtlMs)
@@ -260,6 +275,7 @@ class RyvanPlatform implements Platform {
     this.container.registerInstance("tools", tools);
     this.container.registerInstance("agent-runtime", runtime);
     this.container.registerInstance("agent-sdk", agentSdk);
+    this.container.registerInstance("secrets", secrets);
     this.container.registerInstance("policy", policy);
     this.container.registerInstance("audit", audit);
     this.container.registerInstance("connectors", connectors);

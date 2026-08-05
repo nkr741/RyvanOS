@@ -24,6 +24,7 @@
     { "path": "../persistence" },
     { "path": "../observability" },
     { "path": "../resilience" },
-    { "path": "../console" }
+    { "path": "../console" },
+    { "path": "../secrets" }
   ]
 }

@@ -1,212 +1,211 @@
-# Ryvan AIOS Architecture Guide
+# RyvanOS Architecture
 
-## What is AIOS?
+## What RyvanOS is
 
-Ryvan AIOS is a **platform runtime**, not a product. It provides the shared infrastructure that all Ryvan products run on.
-
-```
-RYVAN AIOS (platform)
-├── Cortex   — Enterprise Business Intelligence & Autonomous Operations
-├── RYN      — Enterprise Autonomous Quality Engineering Platform
-└── RynOne   — Consumer AI Super App
-```
-
-AIOS contains **zero product-specific logic**. Products bring business logic; AIOS provides capabilities.
-
-## Core Principles
-
-1. **Build once, use everywhere.** Every improvement to AIOS benefits all products instantly.
-2. **No speculative packages.** New AIOS packages require a concrete product requirement.
-3. **Capability-based execution.** The runtime executes capabilities (memory, planning, tools), never product-specific logic.
-4. **Event-driven coupling.** Packages never import each other. Inter-package communication is exclusively through the EventBus.
-
-## Tech Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Language | TypeScript | 5.x |
-| Runtime | Node.js | 22+ |
-| Module System | ESM (ES2022) | - |
-| Build | Turborepo + pnpm | 2.x / 9.x |
-| Database | PostgreSQL | 16 |
-| Cache | Redis | (Phase 2+) |
-| Storage | S3-compatible | (Phase 2+) |
-
-## Monorepo Structure
+A **platform runtime**, not a product. It provides the shared infrastructure
+every Ryvan product runs on.
 
 ```
-ryvan-platform/
-├── packages/           # AIOS platform packages
-│   ├── common/         # Types, errors, utils, DI container
-│   ├── events/         # Typed event bus with middleware
-│   ├── identity/       # Auth, RBAC, JWT, API keys, orgs, projects
-│   ├── models/         # Multi-provider model routing, cost tracking
-│   ├── memory/         # Working, conversation, long-term memory
-│   ├── tool-registry/  # Tool definitions, validation, execution
-│   ├── agent-runtime/  # Task queue, scheduler, planner
-│   ├── agent-sdk/      # Abstract agent base class, collaboration
-│   ├── policy-engine/  # Guardrails, spend budgets, approval gates
-│   ├── workflow-engine/# Durable step-graph execution
-│   ├── mission-engine/ # Mission lifecycle over policy + workflow
-│   ├── audit/          # Append-only, hash-chained audit ledger
-│   ├── connector-sdk/  # Connector contract, base class, registry
-│   └── bootstrap/      # One-line platform initialization
-├── apps/               # Products built on AIOS
-│   └── cortex/         # Enterprise intelligence platform
-├── docs/               # Developer documentation
-├── turbo.json          # Build pipeline configuration
-├── pnpm-workspace.yaml # Workspace definition
-└── tsconfig.base.json  # Shared TypeScript config
+RyvanOS (platform)
+├── Cortex   — Enterprise Business Intelligence
+├── NexusOS  — Enterprise Operations        (not started)
+├── RynOne   — Consumer AI Super App        (not started)
+└── QAOS     — Engineering Intelligence     (not started)
 ```
 
-## The Orchestration Spine
+RyvanOS contains **zero product-specific logic**. Products bring business logic;
+the platform provides capabilities. If it mentions leads, payroll, riders or
+test suites, it belongs in a product.
 
-Four packages turn a request into governed, recorded work. Each layer answers
-one question, and none of them knows about any product:
+## Core principles
+
+1. **Build once, use everywhere.** Every improvement benefits all products.
+2. **No speculative packages.** A new package needs a concrete requirement.
+   Before adding one, check it does not already exist — see the do-not-build
+   list in [PLATFORM-ROADMAP.md](./PLATFORM-ROADMAP.md).
+3. **No domain package imports another.** Only `@ryvan/common` and
+   `@ryvan/events` may be imported. Where a package needs another's behaviour
+   synchronously, it declares a **port** and `@ryvan/bootstrap` supplies the
+   implementation.
+4. **Every capability is a `Service`** with `start()`, `stop()`, `status()`.
+5. **Events use `EVENTS.*` constants**, never string literals.
+
+## Tech stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language | TypeScript 5.7, ESM, `NodeNext` |
+| Runtime | Node.js 22+ |
+| Build | Turborepo + pnpm 9 |
+| Database | PostgreSQL 16 + pgvector |
+| Cache / counters | Redis 7 |
+| Tests | Vitest — 460 tests, including live Postgres and Redis |
+
+## The layers
 
 ```
-Mission      "Should this happen, and what carries it out?"
-    │        policy check → plan → workflow → outcome
-    ▼
-Policy       "Is this permitted, and can we afford it?"
-    │        rules · budgets · approval gates
-    ▼
-Workflow     "Run these steps, durably."
-    │        DAG · retries · timeouts · approvals · compensation
-    ▼
-Audit        "What actually happened?"
-             hash-chained ledger fed by the event bus
+                        PRODUCTS
+        Cortex · NexusOS · RynOne · QAOS
+                           │
+   ────────────────────────┼────────────────────────
+                           ▼
+   ORCHESTRATION   mission-engine     "should this happen, and what does it?"
+                          │
+                   workflow-engine    "run these steps, durably"
+                          │
+   GOVERNANCE      policy-engine      "is it permitted, affordable, in quota?"
+                   identity           "who is asking, and what may they hold?"
+                   secrets            "credentials, sealed at rest"
+                          │
+   EXECUTION       agent-runtime · agent-sdk · tool-registry
+                   models             "one router, every provider"
+                   connector-sdk      "one contract, every vendor"
+                   resilience         "retry, break, fall back, park"
+                          │
+   MEMORY          memory · storage · persistence
+                          │
+   EVIDENCE        audit              "what happened, tamper-evident"
+                   observability      "what it cost and where time went"
+                   console            "the window into all of it"
+                          │
+   FOUNDATION      common · events · bootstrap
 ```
 
-A mission is refused before a workflow starts if policy denies it; a workflow
-suspends rather than proceeds when a step needs a human; a failed run
-compensates its completed steps in reverse. Every one of those transitions
-lands in the audit ledger without the caller doing anything.
+## The orchestration spine
 
-## Dependency Graph
+Four packages turn a request into governed, recorded work:
 
-All domain packages depend on `common` and `events`. No domain package imports another domain package. They communicate through the EventBus, and — where one needs another's behaviour synchronously — through **ports**.
+```
+Mission      checked against policy → planned → executed → finalised
+   │
+Policy       rules · budgets · quotas · approval gates
+   │
+Workflow     DAG · retries · timeouts · approvals · compensation
+   │
+Audit        hash-chained ledger, fed by the event bus
+```
+
+A mission is refused before a workflow starts if policy denies it. A workflow
+suspends rather than proceeds when a step needs a human. A failed run
+compensates its completed steps in reverse. Every transition lands in the audit
+ledger without the caller doing anything.
+
+## Ports
+
+Events are fire-and-forget, so they cannot answer *"may I do this?"*. A package
+needing a synchronous answer declares the interface it wants; bootstrap supplies
+the implementation.
+
+| Port | Declared in | Implemented by |
+|------|-------------|----------------|
+| `ApprovalGate` | workflow-engine | policy-engine |
+| `WorkflowRunner` | mission-engine | workflow-engine |
+| `PolicyGate` | mission-engine | policy-engine |
+| `ConnectorPolicyGate` | connector-sdk | policy-engine |
+| `ResilienceGate` | connector-sdk | resilience |
+| `ConsoleSources` | console | everything |
+| `CounterStore` | policy-engine | storage (via persistence) |
+| `WorkflowStore`, `MissionStore`, `AuditStore`, `ApprovalStore`, `IdentityStore`, `TraceStore`, `DeadLetterStore`, `SecretStore` | their own packages | persistence |
+
+Adapters live in `packages/bootstrap/src/adapters.ts` and
+`console-sources.ts` — the only files that know two domain packages at once,
+which is exactly where that knowledge belongs.
+
+## Integration packages
+
+Three packages are allowed to import many others, because integration is their
+job: **bootstrap** (wiring), **persistence** (durable stores), and **console**
+(the inspector — which reads only through ports).
+
+## Dependency graph
 
 ```
 @ryvan/common  (leaf — no @ryvan deps)
     │
     ├── @ryvan/events
     │       │
-    │       ├── @ryvan/identity
-    │       ├── @ryvan/models
-    │       ├── @ryvan/memory
-    │       ├── @ryvan/tool-registry
-    │       ├── @ryvan/agent-sdk
-    │       ├── @ryvan/agent-runtime
-    │       ├── @ryvan/policy-engine
-    │       ├── @ryvan/workflow-engine
-    │       ├── @ryvan/mission-engine
-    │       ├── @ryvan/audit
-    │       └── @ryvan/connector-sdk
+    │       ├── identity · models · memory · tool-registry
+    │       ├── agent-sdk · agent-runtime
+    │       ├── policy-engine · workflow-engine · mission-engine
+    │       ├── audit · observability · resilience
+    │       ├── connector-sdk · secrets · storage
+    │       └── console
     │
-    └── @ryvan/bootstrap  (depends on all packages — wires them together)
+    ├── @ryvan/persistence   (storage + the domain packages it persists)
+    └── @ryvan/bootstrap     (everything — wires it together)
 ```
 
-### Ports
-
-Events are fire-and-forget, so they cannot answer "may I do this?". A package
-that needs a synchronous answer declares the interface it wants and lets
-bootstrap supply the implementation:
-
-| Port | Declared in | Implemented by |
-|------|-------------|----------------|
-| `ApprovalGate` | `workflow-engine` | `policy-engine` |
-| `WorkflowRunner` | `mission-engine` | `workflow-engine` |
-| `PolicyGate` | `mission-engine` | `policy-engine` |
-| `ConnectorPolicyGate` | `connector-sdk` | `policy-engine` |
-
-The adapters live in `packages/bootstrap/src/adapters.ts` — the only file in the
-platform that knows two domain packages at once, which is exactly where that
-knowledge belongs. The rule survives intact: no domain package imports another.
-
-## Service Lifecycle
-
-Every domain package exports a facade class implementing the `Service` interface:
-
-```typescript
-interface Service {
-  readonly name: string;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  status(): Status; // "stopped" | "starting" | "running" | "stopping"
-}
-```
-
-Services must be started before use and stopped on shutdown. The `@ryvan/bootstrap` package handles this automatically.
-
-## Bootstrap — One-Line Init
-
-Products initialize the entire platform with one call:
+## Bootstrap
 
 ```typescript
 import { bootstrap } from "@ryvan/bootstrap";
 
 const platform = await bootstrap({
-  identity: {
-    tokenSecret: process.env.JWT_SECRET!,
-    tokenExpiresIn: "24h",
-    tokenIssuer: "ryvan-platform",
+  identity: { tokenSecret: process.env.RYVAN_JWT_SECRET! },
+  models: { defaultModel: "claude-haiku-4-5" },
+
+  // Omit this and everything runs in memory — nothing survives a restart.
+  storage: {
+    postgresUrl: process.env.RYVAN_POSTGRES_URL,
+    redisUrl: process.env.RYVAN_REDIS_URL,
   },
-  models: {
-    defaultModel: "claude-haiku-4-5",
-  },
+
+  console: { token: process.env.RYVAN_CONSOLE_TOKEN! },
 });
 
-// Resolve any service from the container
-const models = platform.container.resolve<ModelService>("models");
-const identity = platform.container.resolve<IdentityService>("identity");
-
-// Graceful shutdown on SIGTERM/SIGINT
 platform.enableGracefulShutdown();
+
+const mission = platform.container.resolve<MissionService>("mission");
 ```
 
-## Event-Driven Communication
+Resolvable names: `logger`, `events`, `identity`, `secrets`, `policy`,
+`resilience`, `observability`, `audit`, `models`, `memory`, `tools`,
+`connectors`, `workflow`, `mission`, `agent-runtime`, `agent-sdk`, `documents`,
+`cache`, `vectors`, and `console` when configured.
 
-Packages emit typed events. Other packages (or the application) subscribe to them.
+> `events` is registered but **not** in the start order — `EventBus` has no
+> lifecycle and is live once constructed.
+
+## Start order
+
+```
+identity → secrets → policy → resilience → observability → audit →
+models → memory → tools → connectors → workflow →
+agent-sdk → agent-runtime → mission → console
+```
+
+Storage drivers connect **before** any service and disconnect **after** all of
+them. Audit and observability start early so they capture what follows. Mission
+starts last because it drives everything below it. The console starts last of
+all — an inspector must never be the reason the platform fails to come up.
+
+## Multi-tenancy
+
+| Concern | Where |
+|---------|-------|
+| Organization → Project | `identity` |
+| Roles and permissions | `identity` (RBAC, hierarchical, org/project scoped) |
+| API keys | `identity` |
+| Credentials | `secrets` — AES-256-GCM, scoped per org/project |
+| Spend ceilings | `policy-engine` `BudgetGuard` |
+| Volume ceilings | `policy-engine` `QuotaGuard` |
+| Data isolation | Every durable record carries its scope; stores filter on it |
+
+**There is deliberately no "Workspace" entity.** `Project` already is that
+layer — adding both would give two names for one concept, and every store,
+filter and permission would have to understand the difference.
+
+## Event-driven coupling
 
 ```typescript
 const events = platform.container.resolve<EventBus>("events");
 
-// Subscribe to events
-events.on("task:completed", (event) => {
-  console.log("Task done:", event.data);
+events.on(EVENTS.MISSION_COMPLETED, (event) => {
+  // event.type, event.data, event.correlationId, event.timestamp
 });
-
-// Events emitted by packages (examples)
-// identity:user.created, identity:user.authenticated
-// model:called, model:response
-// memory:stored, memory:retrieved
-// tool:executed, tool:error
-// task:created, task:completed, task:failed
-// agent:initialized, agent:completed, agent:error
 ```
 
-## DI Container
-
-All services are registered in a `Container` (dependency injection). Resolve services by name:
-
-```typescript
-const container = platform.container;
-
-container.resolve<EventBus>("events");
-container.resolve<IdentityService>("identity");
-container.resolve<ModelService>("models");
-container.resolve<MemoryManager>("memory");
-container.resolve<ToolService>("tools");
-container.resolve<RuntimeService>("agent-runtime");
-container.resolve<AgentService>("agent-sdk");
-container.resolve<PolicyService>("policy");
-container.resolve<WorkflowService>("workflow");
-container.resolve<MissionService>("mission");
-container.resolve<AuditService>("audit");
-container.resolve<ConnectorService>("connectors");
-container.resolve<ILogger>("logger");
-```
-
-> `events` is registered on the container but is **not** in the service start
-> order — `EventBus` has no lifecycle and is live once constructed.
+`correlationId` is the trace id. A mission generates one and passes it to its
+workflow, so everything beneath one mission shares a trace — which is what lets
+observability assemble a span tree from events alone, with no service
+instrumented for it.

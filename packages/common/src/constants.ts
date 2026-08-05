@@ -181,6 +181,14 @@ export const EVENTS = {
 
   AUDIT_RECORDED: "audit:recorded",
 
+  SECRET_WRITTEN: "secret:written",
+  SECRET_ACCESSED: "secret:accessed",
+  SECRET_DELETED: "secret:deleted",
+
+  QUOTA_CONSUMED: "quota:consumed",
+  QUOTA_WARNING: "quota:warning",
+  QUOTA_EXCEEDED: "quota:exceeded",
+
   COST_THRESHOLD: "cost:threshold",
   COST_EXCEEDED: "cost:exceeded",
 

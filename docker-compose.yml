@@ -1,61 +1,76 @@
-version: "3.9"
+# RyvanOS local stack.
+#
+# `docker compose up` gives you Postgres (with pgvector), Redis, and the
+# platform with its Developer Console on http://localhost:4500.
+#
+# This file previously referenced ./services/gateway and ./services/ml-runtime,
+# neither of which exists — `docker compose build` failed on a clean checkout.
 
 services:
-  gateway:
+  platform:
     build:
-      context: ./services/gateway
+      context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "${RYVAN_CONSOLE_PORT:-4500}:4500"
     environment:
-      - AIOS_ENV=development
-      - AIOS_LOG_LEVEL=debug
+      NODE_ENV: production
+      RYVAN_LOG_LEVEL: ${RYVAN_LOG_LEVEL:-info}
+      RYVAN_POSTGRES_URL: postgres://ryvan:${POSTGRES_PASSWORD:-ryvan_dev}@postgres:5432/ryvan
+      RYVAN_REDIS_URL: redis://redis:6379
+      RYVAN_JWT_SECRET: ${RYVAN_JWT_SECRET:?set RYVAN_JWT_SECRET in .env}
+      RYVAN_SECRET_KEY: ${RYVAN_SECRET_KEY:?set RYVAN_SECRET_KEY in .env}
+      RYVAN_CONSOLE_TOKEN: ${RYVAN_CONSOLE_TOKEN:?set RYVAN_CONSOLE_TOKEN in .env}
+      # Inside the container the console must bind 0.0.0.0 to be reachable
+      # through the published port. Only that port is exposed to the host.
+      RYVAN_CONSOLE_HOST: 0.0.0.0
+      RYVAN_DEFAULT_MODEL: ${RYVAN_DEFAULT_MODEL:-claude-haiku-4-5}
     depends_on:
-      - redis
-      - postgres
-    networks:
-      - ryvan-net
-
-  ml-runtime:
-    build:
-      context: ./services/ml-runtime
-      dockerfile: Dockerfile
-    ports:
-      - "8090:8090"
-    environment:
-      - AIOS_ENV=development
-    volumes:
-      - model-cache:/app/models
-    networks:
-      - ryvan-net
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - ryvan-net
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [ryvan-net]
 
   postgres:
+    # pgvector rather than plain postgres: the platform's vector store is a
+    # column in this database, not a separate service.
     image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
-      POSTGRES_DB: ryvan_aios
+      POSTGRES_DB: ryvan
       POSTGRES_USER: ryvan
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ryvan_dev}
     volumes:
       - pg-data:/var/lib/postgresql/data
-    networks:
-      - ryvan-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ryvan -d ryvan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [ryvan-net]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [ryvan-net]
 
 networks:
   ryvan-net:
     driver: bridge
 
 volumes:
-  redis-data:
   pg-data:
-  model-cache:
+  redis-data:

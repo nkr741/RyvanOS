@@ -611,3 +611,88 @@ For this to work the caller must pass `correlationId` on the `ModelRequest` — 
 ### Known limitation
 
 A model or tool call reports which trace it belongs to but not which *step* invoked it, so it is attached to the innermost span still open in that trace. That is correct for sequential work and can misplace a call under concurrent steps. Attributing it exactly requires passing a parent span id, which `Tracer` accepts directly.
+
+---
+
+## @ryvan/resilience
+
+**Purpose:** Makes a call survivable. Retries, circuit breakers, fallbacks, dead letters.
+
+| Layer | Handles |
+|-------|---------|
+| Retries (jittered) | A blip. Jitter matters: without it every caller that failed together retries together, turning a blip into an outage. |
+| Circuit breakers | An outage. The value is not retrying but **stopping** — a dependency that is already down should fail instantly rather than burning a timeout per call and exhausting the caller's concurrency. |
+| Fallbacks | "This route is gone, try another." |
+| Dead letters | Work that must eventually happen but cannot happen now. |
+
+Policies match by glob against a call key, so SAP being down does not open the circuit on Slack.
+
+```typescript
+resilience: {
+  policies: [
+    { target: "connector:sap:*", retry: { maxAttempts: 3 },
+      breaker: { failureThreshold: 5, resetTimeoutMs: 30_000 } },
+    { target: "connector:sap:createInvoice", deadLetter: true },
+  ],
+}
+```
+
+**Resilient by default.** An unconfigured platform still survives a transient blip. Being resilient only for teams who remembered to opt in is the wrong default — but it never extends to retrying things that cannot succeed, which is why a non-retryable failure is attempted once and never counts against the circuit.
+
+**Dead-lettering re-raises rather than returning success.** Parked is not done; a caller must not read it as "the payment went through" when it is sitting in a queue.
+
+---
+
+## @ryvan/secrets
+
+**Purpose:** Credentials, encrypted at rest and scoped per tenant.
+
+Before this, connector credentials travelled in plain configuration objects — readable by anything that could see the config and printable by anything that logged it.
+
+```typescript
+const secrets = platform.container.resolve<SecretsService>("secrets");
+
+await secrets.set({ name: "sap.password", value: "…", scope: { orgId } });
+const password = await secrets.reveal("sap.password", { orgId });
+```
+
+The API is deliberately asymmetric: `list()` and `describe()` **never** return a value, and only `reveal()` does. Making the plaintext path explicit is what keeps credentials out of logs, traces and console screenshots. Every reveal is counted and emitted, so an audit can answer "who read this credential and when".
+
+AES-256-GCM, fresh IV per write. GCM rather than CBC because it authenticates as well as encrypts — without an auth tag, someone with database write access could flip bits in a credential and the platform would decrypt the result and use it.
+
+**Key rotation is incremental.** Old keys stay configured so nothing breaks mid-rotation; `rotate()` re-seals what it can and *reports* what it cannot rather than deleting it, because losing a credential silently is the worse outcome.
+
+---
+
+## @ryvan/console
+
+**Purpose:** The window into a running platform — missions, traces, approvals, audit, circuits, cost, health.
+
+Framework-free: `ConsoleApi.handle()` takes a plain object and returns one, so it mounts in `node:http`, Express, Fastify or a Next.js route behind a small shim, and is testable without opening a socket. The UI is one self-contained HTML document — no build step, no CDN.
+
+It reads through the `ConsoleSources` port, so it imports no domain package.
+
+Security decisions that are deliberate:
+
+- A bearer token is **mandatory**, with no disable switch. It exposes mission inputs, the audit trail and the approval buttons; an unauthenticated deployment is a breach, so the failure mode is "will not construct".
+- Token comparison is **constant time** — `===` leaks the token one byte at a time under timing analysis.
+- Binds `127.0.0.1` by default.
+- Auth is checked **before** routing, so unknown paths cannot be probed.
+- Granting an approval requires `decidedBy`. An approval with no decider is not an audit trail, it is a rumour.
+
+Read-heavy. The only actions are the three an operator needs at 3am: decide an approval, reset a circuit, cancel a mission.
+
+---
+
+## @ryvan/storage and @ryvan/persistence
+
+**@ryvan/storage** provides generic ports — `KeyValueStore`, `DocumentStore`, `ObjectStore`, `VectorStore`, `SqlClient` — with in-memory, Postgres (+pgvector) and Redis drivers, plus a migration runner. No domain types appear anywhere in it.
+
+**@ryvan/persistence** implements each domain package's store port against the generic `DocumentStore`, so the same class runs in memory in tests and on Postgres in production. `storage.postgresUrl` is the single switch.
+
+A shared **conformance suite** (`@ryvan/storage/testing`) runs identical assertions against every driver. That is the only thing that makes "swap Redis for a map in tests" a safe claim rather than a hopeful one.
+
+Two properties worth knowing:
+
+- Vector similarity is normalised to 0..1 in both drivers, so orthogonal scores 0.5 rather than 0 — reading 0 as "no similarity" is the mistake the rescaling prevents.
+- `PostgresDriver.transaction()` enrols only statements issued on the client it hands you. `put`/`get`/`find` run on the pool and are **not** rolled back.

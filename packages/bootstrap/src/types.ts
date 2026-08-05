@@ -1,7 +1,8 @@
 import type { ILogger } from "@ryvan/common";
 import type { EventBusOptions } from "@ryvan/events";
 import type { WorkerConfig } from "@ryvan/agent-runtime";
-import type { BudgetLimit, PolicyEffect, PolicyRule } from "@ryvan/policy-engine";
+import type { BudgetLimit, PolicyEffect, PolicyRule, QuotaLimit } from "@ryvan/policy-engine";
+import type { EncryptionKey } from "@ryvan/secrets";
 import type { WorkflowDefinition, WorkflowStore } from "@ryvan/workflow-engine";
 import type { MissionPlanner, MissionStore, MissionTemplate } from "@ryvan/mission-engine";
 import type { AuditStore } from "@ryvan/audit";
@@ -19,11 +20,25 @@ export interface PlatformConfig {
   events?: Partial<EventBusOptions>;
   runtime?: Partial<WorkerConfig>;
 
+  /**
+   * Encrypted secret storage.
+   *
+   * Defaults to deriving a key from `identity.tokenSecret`, which gets you
+   * running but ties two unrelated rotations together — supply separate keys
+   * for anything real. The first key is active; the rest are retained so
+   * secrets sealed with them stay readable through a rotation.
+   */
+  secrets?: {
+    keys: EncryptionKey[];
+  };
+
   policy?: {
     /** Effect when no rule matches. Default "allow". */
     defaultEffect?: PolicyEffect;
     rules?: PolicyRule[];
     budgets?: BudgetLimit[];
+    /** Volume ceilings — missions per month, connector calls per minute. */
+    quotas?: QuotaLimit[];
     approvalTtlMs?: number;
     /**
      * Record model spend against budgets automatically. Default true.
